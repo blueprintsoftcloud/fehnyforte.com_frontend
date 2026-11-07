@@ -1,12 +1,11 @@
 // src/dashboard/super-admin-dashboard.tsx
 // Dashboard layout for SUPER_ADMIN role only.
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, Suspense } from "react";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { createPortal } from "react-dom";
 import { Link, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { PulseLoader } from "react-spinners";
 import { FaUserCircle } from "react-icons/fa";
 import api from "../utils/api";
 import { APP_VERSION } from "../utils/constant";
@@ -14,6 +13,7 @@ import logo123 from "../assets/logo.png";
 import { useNotifications } from "../context/NotificationContext";
 import NotificationBell from "../components/NotificationBell";
 import OrderToast from "../components/OrderToast";
+import Loader from "../components/Loader";
 
 import {
   Dialog,
@@ -29,6 +29,7 @@ import {
 import {
   Bars3Icon,
   HomeIcon,
+  CubeIcon,
   XMarkIcon,
   UsersIcon,
   TagIcon,
@@ -64,6 +65,21 @@ const SUPER_ADMIN_NAVIGATION = [
     icon: HomeIcon,
   },
   {
+    name: "Place Order",
+    href: "/super-admin-dashboard/place-order",
+    icon: ShoppingCartIcon,
+  },
+  {
+    name: "Order Management",
+    href: "/super-admin-dashboard/order-management",
+    icon: ShoppingBagIcon,
+  },
+  {
+    name: "Products & Stock",
+    href: "/super-admin-dashboard/products",
+    icon: CubeIcon,
+  },
+  {
     name: "User Management",
     icon: UsersIcon,
     subLinks: [
@@ -75,11 +91,6 @@ const SUPER_ADMIN_NAVIGATION = [
     name: "Catalog Management",
     href: "/super-admin-dashboard/manage-catalog",
     icon: TagIcon,
-  },
-  {
-    name: "Order Management",
-    href: "/super-admin-dashboard/order-management",
-    icon: ShoppingBagIcon,
   },
   {
     name: "Coupon Management",
@@ -137,11 +148,6 @@ const SUPER_ADMIN_NAVIGATION = [
     name: "Content Pages",
     href: "/super-admin-dashboard/content-pages",
     icon: DocumentTextIcon,
-  },
-  {
-    name: "Place Order",
-    href: "/super-admin-dashboard/place-order",
-    icon: ShoppingCartIcon,
   },
   {
     name: "System Monitoring",
@@ -428,8 +434,14 @@ export default function SuperAdminDashboard() {
     () => localStorage.getItem("superAdminSidebarCollapsed") === "true",
   );
   const [openMenu, setOpenMenu] = useState("");
-  const [adminInfo, setAdminInfo] = useState<AdminInfo | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [adminInfo, setAdminInfo] = useState<AdminInfo | null>(() => {
+    try {
+      const cached = localStorage.getItem("crm_super_admin_profile");
+      return cached ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
+  });
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   useBodyScrollLock(sidebarOpen || showLogoutConfirm);
 
@@ -474,45 +486,37 @@ export default function SuperAdminDashboard() {
 
   const handleLogout = () => {
     setAdminInfo(null);
+    try {
+      localStorage.removeItem("crm_super_admin_profile");
+    } catch {}
     logout();
   };
 
   const fetchProfile = async () => {
-    setIsLoading(true);
     try {
       const res = await api.get("/admin/adminProfile");
       const data = res.data.adminData;
-      setAdminInfo({
+      const profile = {
         name: data.username || data.name || "Super Admin",
         role: "Super Admin",
         avatar: data.avatar || "",
-      });
+      };
+      setAdminInfo(profile);
+      try {
+        localStorage.setItem("crm_super_admin_profile", JSON.stringify(profile));
+      } catch {}
     } catch (err) {
+      const status = (err as any)?.response?.status;
       console.error("Profile fetch failed:", err);
-      navigate("/login", { replace: true });
-    } finally {
-      setIsLoading(false);
+      if (status === 401 || status === 403 || status === 404) {
+        logout();
+      }
     }
   };
 
   useEffect(() => {
     fetchProfile();
   }, []);
-
-  if (isLoading) {
-    return (
-      <div className="flex h-screen w-screen flex-col items-center justify-center bg-slate-50 font-sans">
-        <div className="flex flex-col items-center justify-center gap-6 text-center">
-          <div className="relative flex items-center justify-center w-0 h-0 pl-1.5">
-            <PulseLoader color="#000000" />
-          </div>
-          <p className="text-xs uppercase font-bold tracking-widest text-slate-400 font-mono mt-12 w-full text-center select-none">
-            Loading...
-          </p>
-        </div>
-      </div>
-    );
-  }
   // Shared sidebar inner content for mobile + desktop. `collapsed` only ever
   // applies to the desktop rail — the mobile slide-over always calls this with
   // it left false, since there's no room benefit to collapsing an overlay.
@@ -776,7 +780,15 @@ export default function SuperAdminDashboard() {
           {/* Main Content */}
           <main>
             <div>
-              <Outlet />
+              <Suspense
+                fallback={
+                  <div className="flex items-center justify-center py-20 min-h-[350px]">
+                    <Loader fullScreen={false} />
+                  </div>
+                }
+              >
+                <Outlet />
+              </Suspense>
             </div>
           </main>
         </div>

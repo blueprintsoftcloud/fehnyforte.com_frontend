@@ -6,7 +6,7 @@ import React, {
   useCallback,
 } from "react";
 import { createPortal } from "react-dom";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import {
@@ -58,16 +58,19 @@ import {
   RotateCcw,
   X,
   Image as ImageIcon,
+  Layers,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import { useAuth } from "../context/AuthContext";
 import { useStaffPermissions } from "../context/StaffPermissionContext";
 import { normalizeProduct, calculateDiscountedPrice, calculateDiscountAmount } from "../utils/product";
+import { normalizeCategory } from "../utils/category";
 import { compressImage } from "../utils/compressImage";
-import { PulseLoader } from "react-spinners";
+import { formatProductDescription, convertClipboardHtmlToText } from "../utils/sanitizeHtml";
 import AttributeFilterPanel from "../components/AttributeFilterPanel";
 import ProductVariantsModal from "./ProductVariantsModal";
 import VariantsManagerFields, { VariantsManagerFieldsHandle } from "./VariantsManagerFields";
+import ProductSpecificationsEditor, { ProductSpecification, ProductCustomSection } from "./ProductSpecificationsEditor";
 
 // SAME FILE – ListProducts.jsx
 const LoaderSpinner = ({
@@ -150,6 +153,9 @@ interface ListProduct {
   image?: string;
   images?: string[];
   category?: { id?: string; name?: string; code?: string } | string;
+  materialCare?: string;
+  customSections?: ProductCustomSection[];
+  specifications?: ProductSpecification[];
   attributeValues?: ProductAttrValue[];
   isActive?: boolean;
   createdAt?: string;
@@ -175,6 +181,7 @@ interface ProductFormData {
   description: string;
   metaTitle: string;
   metaDescription: string;
+  materialCare?: string;
   purchasePrice: number | string;
   price: number | string;
   stock: number | string;
@@ -675,6 +682,7 @@ const Listproducts = ({
 }: ListproductsProps = {}) => {
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const dashboardBase = location.pathname.startsWith("/super-admin-dashboard")
     ? "/super-admin-dashboard"
     : location.pathname.startsWith("/staff-dashboard")
@@ -733,6 +741,7 @@ const Listproducts = ({
     description: "",
     metaTitle: "",
     metaDescription: "",
+    materialCare: "",
     purchasePrice: "",
     price: "",
     stock: "",
@@ -741,6 +750,8 @@ const Listproducts = ({
     additionalImages: [],
     removeImages: [],
   });
+  const [editCustomSections, setEditCustomSections] = useState<ProductCustomSection[]>([]);
+  const [editSpecifications, setEditSpecifications] = useState<ProductSpecification[]>([]);
   const [imagePreview, setImagePreview] = useState("");
   const [additionalPreviews, setAdditionalPreviews] = useState<string[]>([]);
   const [existingAdditionalImages, setExistingAdditionalImages] = useState<
@@ -1038,8 +1049,8 @@ const Listproducts = ({
             return {
               ...prev,
               price: String(cheapest.priceOverride ?? currentPrice),
-              purchasePrice: cheapest.purchasePriceOverride != null ? String(cheapest.purchasePriceOverride) : prev.purchasePrice,
-              discount: cheapest.discountOverride != null ? String(cheapest.discountOverride) : prev.discount,
+              purchasePrice: cheapest.purchasePriceOverride != null ? String(cheapest.purchasePriceOverride) : (prev.purchasePrice || "0"),
+              discount: cheapest.discountOverride != null ? String(cheapest.discountOverride) : "0",
             };
           });
         }
@@ -1100,6 +1111,7 @@ const Listproducts = ({
       description: product.description || "",
       metaTitle: product.metaTitle ?? "",
       metaDescription: product.metaDescription ?? "",
+      materialCare: product.materialCare || "",
       purchasePrice: product.purchasePrice ?? "",
       price: product.price ?? "",
       stock: product.stock || 0,
@@ -1111,6 +1123,15 @@ const Listproducts = ({
     setImagePreview(product.image || "");
     setExistingAdditionalImages(product.images || []);
     setAdditionalPreviews([]);
+    const initialSections: ProductCustomSection[] = Array.isArray(product.customSections) && product.customSections.length > 0
+      ? product.customSections.map((s) => ({ heading: s.heading || "", content: s.content || "" }))
+      : (product.materialCare ? [{ heading: "Material & Care", content: product.materialCare }] : []);
+    setEditCustomSections(initialSections);
+    setEditSpecifications(
+      Array.isArray(product.specifications)
+        ? product.specifications.map((s) => ({ key: s.key || "", value: s.value || "" }))
+        : []
+    );
     setShowEditModal(true);
 
     // Whether this product's Stock field should be editable — once it has variants,
@@ -1123,6 +1144,54 @@ const Listproducts = ({
     const editingProductId = product._id ?? product.id;
     if (editingProductId) refreshEditingVariantStock(editingProductId);
   };
+
+  // ── Auto-Open Edit Modal from URL Parameter (e.g. from Stock Management) ──────
+  const editProductHandledRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const editProductId = searchParams.get("editProduct") || searchParams.get("productId");
+    if (!editProductId || editProductHandledRef.current === editProductId) return;
+
+    // 1. Try to find the product in currently loaded list
+    const existing = currentProducts.find((p) => (p._id ?? p.id) === editProductId);
+    if (existing) {
+      editProductHandledRef.current = editProductId;
+      handleEditClick(existing);
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete("editProduct");
+          next.delete("productId");
+          return next;
+        },
+        { replace: true }
+      );
+    } else if (!loadingProducts && currentProducts.length > 0) {
+      // 2. If not found in current page, fetch product details directly and launch edit
+      editProductHandledRef.current = editProductId;
+      api
+        .get(`/product/detail/${editProductId}`)
+        .then((res) => {
+          if (res.data?.product) {
+            handleEditClick(res.data.product);
+          }
+        })
+        .catch((err) => {
+          console.error("Failed to fetch product for direct edit", err);
+        })
+        .finally(() => {
+          setSearchParams(
+            (prev) => {
+              const next = new URLSearchParams(prev);
+              next.delete("editProduct");
+              next.delete("productId");
+              return next;
+            },
+            { replace: true }
+          );
+        });
+    }
+  }, [searchParams, currentProducts, loadingProducts]);
 
   const handleViewProduct = (product: ListProduct) => {
     setDetailProduct(product);
@@ -1140,6 +1209,83 @@ const Listproducts = ({
   const handleDeleteClick = (product: ListProduct) => {
     setSelectedProduct(product);
     setShowDeleteModal(true);
+  };
+
+  const editDescriptionTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const applyBoldToEditDescription = () => {
+    const textarea = editDescriptionTextareaRef.current;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const currentText = formData.description;
+
+    let newText = "";
+    let newCursorPos = 0;
+
+    if (start !== end) {
+      const selected = currentText.substring(start, end);
+      if (selected.startsWith("<b>") && selected.endsWith("</b>")) {
+        const unwrapped = selected.slice(3, -4);
+        newText = currentText.substring(0, start) + unwrapped + currentText.substring(end);
+        newCursorPos = start + unwrapped.length;
+      } else if (selected.startsWith("**") && selected.endsWith("**")) {
+        const unwrapped = selected.slice(2, -2);
+        newText = currentText.substring(0, start) + unwrapped + currentText.substring(end);
+        newCursorPos = start + unwrapped.length;
+      } else {
+        const wrapped = `<b>${selected}</b>`;
+        newText = currentText.substring(0, start) + wrapped + currentText.substring(end);
+        newCursorPos = start + wrapped.length;
+      }
+    } else {
+      const insertion = "<b>bold text</b>";
+      newText = currentText.substring(0, start) + insertion + currentText.substring(end);
+      newCursorPos = start + insertion.length;
+    }
+
+    setFormData((prev) => ({ ...prev, description: newText }));
+
+    setTimeout(() => {
+      if (editDescriptionTextareaRef.current) {
+        editDescriptionTextareaRef.current.focus();
+        editDescriptionTextareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+      }
+    }, 0);
+  };
+
+  const handleEditDescriptionKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((e.ctrlKey || e.metaKey) && (e.key === "b" || e.key === "B")) {
+      e.preventDefault();
+      applyBoldToEditDescription();
+    }
+  };
+
+  const handleEditDescriptionPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const clipboardHtml = e.clipboardData.getData("text/html");
+    const clipboardPlain = e.clipboardData.getData("text/plain");
+
+    if (!clipboardHtml && !clipboardPlain) return;
+
+    const formatted = convertClipboardHtmlToText(clipboardHtml, clipboardPlain);
+
+    e.preventDefault();
+    const textarea = e.currentTarget;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const currentText = formData.description;
+
+    const newText = currentText.substring(0, start) + formatted + currentText.substring(end);
+    const newCursorPos = start + formatted.length;
+
+    setFormData((prev) => ({ ...prev, description: newText }));
+
+    setTimeout(() => {
+      if (editDescriptionTextareaRef.current) {
+        editDescriptionTextareaRef.current.focus();
+        editDescriptionTextareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+      }
+    }, 0);
   };
 
   const handleChange = async (
@@ -1238,10 +1384,39 @@ const Listproducts = ({
 
     // 🔍 No changes check
     const hasVariantEdits = variantsManagerRef.current?.hasPendingEdits() ?? false;
+
+    const initialSpecs = Array.isArray(selectedProduct.specifications)
+      ? selectedProduct.specifications
+          .filter((s) => s && (s.key?.trim() || s.value?.trim()))
+          .map((s) => ({ key: (s.key || "").trim(), value: (s.value || "").trim() }))
+      : [];
+    const currentSpecs = editSpecifications
+      .filter((s) => s && (s.key?.trim() || s.value?.trim()))
+      .map((s) => ({ key: (s.key || "").trim(), value: (s.value || "").trim() }));
+    const specsChanged = JSON.stringify(initialSpecs) !== JSON.stringify(currentSpecs);
+
+    const initialMaterialCare = (selectedProduct.materialCare || "").trim();
+    const currentMaterialCare = (formData.materialCare || "").trim();
+    const materialCareChanged = initialMaterialCare !== currentMaterialCare;
+
+    const initialSections = Array.isArray(selectedProduct.customSections) && selectedProduct.customSections.length > 0
+      ? selectedProduct.customSections
+          .filter((s) => s && (s.heading?.trim() || s.content?.trim()))
+          .map((s) => ({ heading: (s.heading || "").trim(), content: (s.content || "").trim() }))
+      : (selectedProduct.materialCare ? [{ heading: "Material & Care", content: selectedProduct.materialCare.trim() }] : []);
+    const currentSections = editCustomSections
+      .filter((s) => s && (s.heading?.trim() || s.content?.trim()))
+      .map((s) => ({ heading: (s.heading || "").trim(), content: (s.content || "").trim() }));
+    const sectionsChanged = JSON.stringify(initialSections) !== JSON.stringify(currentSections);
+
     const isUnchanged =
       !hasVariantEdits &&
+      !specsChanged &&
+      !materialCareChanged &&
+      !sectionsChanged &&
       formData.productCode === (selectedProduct.code ?? "") &&
       formData.productName === selectedProduct.name &&
+      formData.brand === (selectedProduct.brand ?? "") &&
       formData.price === selectedProduct.price &&
       formData.description === selectedProduct.description &&
       formData.metaTitle === (selectedProduct.metaTitle ?? "") &&
@@ -1265,6 +1440,19 @@ const Listproducts = ({
       return;
     }
 
+    // Strict requirement: every active variant must have a primary image (Slot 1)
+    const missingImages = variantsManagerRef.current?.getVariantsMissingImage() ?? [];
+    if (missingImages.length > 0) {
+      setEditSectionTab("variants");
+      const names = missingImages.slice(0, 2).map((m) => m.label).join(", ");
+      const more = missingImages.length > 2 ? ` (+${missingImages.length - 2} more)` : "";
+      toast.error(
+        `1st image is required for all active variants. Missing: ${names}${more}`,
+        { id: "variant-missing-image-update", duration: 5000 },
+      );
+      return;
+    }
+
     // Every active variant still unpriced (never touched, not just one row among priced
     // siblings) means proceeding would silently put the whole product live at ₹0 — confirm
     // first instead of saving that outright, same guard as ProductVariantsModal.tsx.
@@ -1279,6 +1467,18 @@ const Listproducts = ({
 
   const proceedUpdate = async () => {
     if (!selectedProduct) return;
+    const missingImages = variantsManagerRef.current?.getVariantsMissingImage() ?? [];
+    if (missingImages.length > 0) {
+      setEditSectionTab("variants");
+      const names = missingImages.slice(0, 2).map((m) => m.label).join(", ");
+      const more = missingImages.length > 2 ? ` (+${missingImages.length - 2} more)` : "";
+      toast.error(
+        `1st image is required for all active variants. Missing: ${names}${more}`,
+        { id: "variant-missing-image-update", duration: 5000 },
+      );
+      return;
+    }
+
     const hasVariantEdits = variantsManagerRef.current?.hasPendingEdits() ?? false;
     const productId = selectedProduct._id ?? selectedProduct.id;
     if (!productId) {
@@ -1307,6 +1507,11 @@ const Listproducts = ({
       data.append("description", formData.description);
       data.append("metaTitle", formData.metaTitle.trim());
       data.append("metaDescription", formData.metaDescription.trim());
+      if (formData.materialCare !== undefined) data.append("materialCare", (formData.materialCare || "").trim());
+      const validSections = editCustomSections.filter((s) => s.heading.trim() && s.content.trim());
+      data.append("customSections", JSON.stringify(validSections));
+      const validSpecs = editSpecifications.filter((s) => s.key.trim() && s.value.trim());
+      data.append("specifications", JSON.stringify(validSpecs));
       // Skip price/purchasePrice/stock/discount when the product has variants — all
       // four are derived server-side (syncProductFromVariants) and read-only in that
       // case; sending the last value the form loaded would be stale the moment any
@@ -2727,6 +2932,7 @@ const Listproducts = ({
                         }}
                         basePrice={selectedProduct.price ?? null}
                         basePurchasePrice={selectedProduct.purchasePrice ?? null}
+                        productImages={[selectedProduct.image, ...(selectedProduct.images ?? [])].filter(Boolean) as string[]}
                       />
                     )}
                   </div>
@@ -2734,6 +2940,8 @@ const Listproducts = ({
 
                   {editSectionTab === "images" && (
                     <div className="space-y-6">
+
+
                       {/* PRIMARY IMAGE */}
                       <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 space-y-3">
                         <div className="flex items-center justify-between">
@@ -2841,16 +3049,16 @@ const Listproducts = ({
                         ) : (
                           <label
                             htmlFor="productImage"
-                            className="flex flex-col items-center justify-center w-full p-6 border-2 border-dashed border-slate-200 hover:border-indigo-300 rounded-xl bg-white hover:bg-indigo-50/20 cursor-pointer transition-all text-center group"
+                            className="flex flex-col items-center justify-center w-full py-8 px-6 border-2 border-dashed border-slate-200/90 hover:border-indigo-400 rounded-2xl bg-slate-50/40 hover:bg-indigo-50/25 cursor-pointer transition-all duration-200 text-center group"
                           >
-                            <div className="p-3 rounded-full bg-slate-100 group-hover:bg-indigo-100 transition mb-2">
-                              <Upload className="h-6 w-6 text-slate-400 group-hover:text-indigo-600 transition" />
+                            <div className="h-12 w-12 rounded-2xl flex items-center justify-center transition-all duration-200 mb-2.5 shadow-2xs bg-white border border-slate-200/80 text-slate-600 group-hover:text-indigo-600 group-hover:border-indigo-300 group-hover:scale-105 group-hover:shadow-xs">
+                              <Upload className="h-5 w-5" />
                             </div>
-                            <span className="text-sm font-semibold text-slate-700 group-hover:text-indigo-700">
+                            <span className="text-sm font-bold text-slate-800 group-hover:text-indigo-700 transition-colors">
                               Upload Primary Image
                             </span>
                             <span className="text-xs text-slate-400 mt-1">
-                              PNG, JPG, WEBP up to 1MB
+                              PNG, JPG, WEBP up to 5MB
                             </span>
                           </label>
                         )}
@@ -2863,10 +3071,27 @@ const Listproducts = ({
                           onChange={handleChange}
                           className="hidden"
                         />
+
+                        {editingVariantsList.length > 0 && (
+                          <div className="flex items-center gap-2 p-3 rounded-xl bg-indigo-50 border border-indigo-100 text-xs text-slate-700 mt-2">
+                            <Layers className="h-4 w-4 text-indigo-600 shrink-0" />
+                            <span>
+                              This product has {editingVariantsList.length} options — photos for each variant are managed directly in the{" "}
+                              <button
+                                type="button"
+                                onClick={() => setEditSectionTab("variants")}
+                                className="font-bold text-indigo-700 underline hover:text-indigo-900 cursor-pointer"
+                              >
+                                Variants tab
+                              </button>.
+                            </span>
+                          </div>
+                        )}
                       </div>
 
-                      {/* GALLERY IMAGES */}
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 space-y-3">
+                      {/* GALLERY IMAGES - Only shown for single-SKU products without variants */}
+                      {editingVariantsList.length === 0 && (
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-4 space-y-3">
                         <div className="flex items-center justify-between">
                           <div>
                             <label className="block text-sm font-bold text-slate-800">
@@ -2975,12 +3200,12 @@ const Listproducts = ({
                           {existingAdditionalImages.length + formData.additionalImages.length < 5 && (
                             <label
                               htmlFor="editAdditionalImages"
-                              className="aspect-square rounded-2xl border-2 border-dashed border-slate-300 hover:border-indigo-400 bg-white hover:bg-indigo-50/20 flex flex-col items-center justify-center gap-1.5 cursor-pointer transition-all p-3 text-center group shadow-2xs"
+                              className="aspect-square rounded-xl border-2 border-dashed border-slate-200/90 hover:border-indigo-400 bg-slate-50/40 hover:bg-indigo-50/25 flex flex-col items-center justify-center gap-1 cursor-pointer transition-all p-3 text-center group"
                             >
-                              <div className="p-2.5 rounded-full bg-slate-100 group-hover:bg-indigo-100 transition">
-                                <Upload className="h-5 w-5 text-slate-400 group-hover:text-indigo-600 transition" />
+                              <div className="h-9 w-9 rounded-xl bg-white border border-slate-200/80 group-hover:border-indigo-300 text-slate-500 group-hover:text-indigo-600 flex items-center justify-center transition-all shadow-2xs group-hover:scale-105">
+                                <Upload className="h-4 w-4" />
                               </div>
-                              <span className="text-xs font-bold text-slate-700 group-hover:text-indigo-700">
+                              <span className="text-xs font-bold text-slate-700 group-hover:text-indigo-700 transition-colors mt-0.5">
                                 Add Image
                               </span>
                               <span className="text-[10px] text-slate-400">
@@ -3017,7 +3242,8 @@ const Listproducts = ({
                             </button>
                           </div>
                         )}
-                      </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -3025,15 +3251,21 @@ const Listproducts = ({
 
                   {/* Description */}
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      Description
-                    </label>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-sm font-medium text-slate-700">
+                        Description
+                      </label>
+                    </div>
                     <textarea
+                      ref={editDescriptionTextareaRef}
                       name="description"
                       value={formData.description}
                       onChange={handleChange}
+                      onKeyDown={handleEditDescriptionKeyDown}
+                      onPaste={handleEditDescriptionPaste}
                       rows={4}
-                      className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50/50 resize-none"
+                      placeholder="Describe this product in detail..."
+                      className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50/50 resize-y focus:bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
                     />
                   </div>
 
@@ -3071,6 +3303,16 @@ const Listproducts = ({
                       />
                     </div>
                   </div>
+
+                  {/* Product Specifications & Material/Care */}
+                  <ProductSpecificationsEditor
+                    customSections={editCustomSections}
+                    onCustomSectionsChange={setEditCustomSections}
+                    materialCare={formData.materialCare || ""}
+                    onMaterialCareChange={(val) => setFormData((prev) => ({ ...prev, materialCare: val }))}
+                    specifications={editSpecifications}
+                    onSpecificationsChange={setEditSpecifications}
+                  />
 
                   {/* ACTIONS */}
                   <div className="sticky bottom-0 z-10 -mx-6 md:mx-0 bg-white/95 backdrop-blur-sm flex justify-end gap-3 px-6 md:px-0 py-4 mt-6 border-t border-slate-100">
@@ -3326,10 +3568,46 @@ const Listproducts = ({
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">
                       Description
                     </p>
-                    <p className="text-sm text-slate-600 whitespace-pre-wrap break-words">
-                      {detailProduct.description || "No description available"}
-                    </p>
+                    <div 
+                      className="text-sm text-slate-700 leading-relaxed whitespace-pre-line space-y-2 [&_b]:font-bold [&_b]:text-slate-900 [&_strong]:font-bold [&_strong]:text-slate-900"
+                      dangerouslySetInnerHTML={{ __html: formatProductDescription(detailProduct.description) }}
+                    />
                   </div>
+
+                  {/* Custom Detail Sections / Material & Care */}
+                  {(() => {
+                    const sections = Array.isArray(detailProduct.customSections) && detailProduct.customSections.length > 0
+                      ? detailProduct.customSections.filter((s) => s && (s.heading?.trim() || s.content?.trim()))
+                      : (detailProduct.materialCare ? [{ heading: "Material & Care", content: detailProduct.materialCare }] : []);
+                    if (sections.length === 0) return null;
+                    return sections.map((sec, idx) => (
+                      <div key={idx} className="rounded-xl border border-slate-100 bg-slate-50/60 p-3.5">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">
+                          {sec.heading}
+                        </p>
+                        <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-line">
+                          {sec.content}
+                        </p>
+                      </div>
+                    ));
+                  })()}
+
+                  {/* Specifications */}
+                  {detailProduct.specifications && detailProduct.specifications.length > 0 && (
+                    <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-3.5">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-2.5">
+                        Specifications
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                        {detailProduct.specifications.map((s, idx) => (
+                          <div key={idx} className="border-b border-slate-200/60 pb-1.5">
+                            <span className="text-[10px] text-slate-400 block">{s.key}</span>
+                            <span className="font-semibold text-slate-800">{s.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

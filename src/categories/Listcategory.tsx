@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router-dom";
 import axios from "axios";
@@ -31,6 +31,9 @@ import {
   Eye,
   Maximize2,
   Camera,
+  SlidersHorizontal,
+  Square,
+  Circle,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useStaffPermissions } from "../context/StaffPermissionContext";
@@ -49,6 +52,7 @@ interface ListCategory {
   description?: string;
   image?: string;
   isActive?: boolean;
+  showFilters?: boolean;
   createdAt?: string;
   parentId?: string | null;
   directProductCount?: number;
@@ -60,6 +64,7 @@ interface CategoryFormData {
   name: string;
   description: string;
   image: File | null;
+  showFilters: boolean;
 }
 
 // Enhanced Loader Component
@@ -238,6 +243,7 @@ const ListCategory = () => {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [editErrors, setEditErrors] = useState<Record<string, string>>({});
   const [formData, setFormData] = useState<CategoryFormData>({
     code: "",
     name: "",
@@ -258,23 +264,52 @@ const ListCategory = () => {
   // Drill-down folder navigation — null = root/top-level. Categories are fetched once,
   // flat, and the whole tree (children-of-X, breadcrumb, descendant counts) is built
   // client-side from `parentId` pointers, same pattern as the existing search/sort.
-  // Seeded from (and kept in sync with) a `folder` URL param below, so reloading or
-  // sharing a link lands back in the same nested folder instead of resetting to root.
+  // Drill-down folder navigation — null = root/top-level.
+  // Directly driven by the `folder` URL query parameter as the single source of truth.
+  // Avoids state-sync race conditions between local useState and useSearchParams which
+  // previously caused subcategories to flicker and immediately bounce back to the parent.
   const [searchParams, setSearchParams] = useSearchParams();
-  const [currentFolderId, setCurrentFolderId] = useState<string | null>(() => searchParams.get("folder"));
+  const currentFolderId = searchParams.get("folder") || null;
 
-  useEffect(() => {
+  const setCurrentFolderId = useCallback((folderId: string | null) => {
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
-        if (currentFolderId) next.set("folder", currentFolderId);
+        if (folderId) next.set("folder", folderId);
         else next.delete("folder");
         return next;
       },
-      { replace: true },
+      { replace: false },
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentFolderId]);
+  }, [setSearchParams]);
+
+  const [storefrontCategoryShape, setStorefrontCategoryShape] = useState<"square" | "circle">("square");
+  const [savingShape, setSavingShape] = useState(false);
+
+  useEffect(() => {
+    api
+      .get("/home-banners/homepage-config")
+      .then((res) => {
+        if (res.data?.categoryShape) {
+          setStorefrontCategoryShape(res.data.categoryShape);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleShapeChange = async (shape: "square" | "circle") => {
+    if (savingShape || shape === storefrontCategoryShape) return;
+    setSavingShape(true);
+    try {
+      await api.put("/admin/homepage-config/category-shape", { categoryShape: shape });
+      setStorefrontCategoryShape(shape);
+      toast.success(`Storefront category shape set to ${shape}`);
+    } catch {
+      toast.error("Failed to update category shape");
+    } finally {
+      setSavingShape(false);
+    }
+  };
 
   // A category holds direct products OR subcategories, never both (enforced server-side
   // on new writes) — this decides whether the current folder shows the subcategory grid
@@ -370,7 +405,9 @@ const ListCategory = () => {
   // "empty" folders keep showing the subcategory grid (its own empty-state placard
   // already offers both Add actions).
   const showProductsView =
-    nodeState === "has-products" || (nodeState === "conflict" && conflictTab === "products");
+    nodeState === "has-products" ||
+    (nodeState === "conflict" && conflictTab === "products") ||
+    Boolean(searchParams.get("editProduct") || searchParams.get("productId"));
 
   useEffect(() => {
     setConflictTab("subcategories");
@@ -491,10 +528,39 @@ const ListCategory = () => {
       name: category.name,
       description: category.description ?? "",
       image: null,
+      showFilters: category.showFilters !== false,
     });
     // Set preview to the existing image URL
     setImagePreview(category.image || "");
+    setEditErrors({});
     setShowEditModal(true);
+  };
+
+  const handleToggleFilters = async (category: ListCategory, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const categoryId = category._id ?? category.id;
+    if (!categoryId) return;
+    const currentVal = category.showFilters !== false;
+    const nextVal = !currentVal;
+
+    // Optimistic UI update
+    setCategories((prev) =>
+      prev.map((c) => ((c._id ?? c.id) === categoryId ? { ...c, showFilters: nextVal } : c))
+    );
+    if (selectedCategory && (selectedCategory._id ?? selectedCategory.id) === categoryId) {
+      setSelectedCategory((prev) => (prev ? { ...prev, showFilters: nextVal } : null));
+    }
+
+    try {
+      await api.patch(`/category/${categoryId}/filters-toggle`, { showFilters: nextVal });
+      toast.success(`Storefront filters ${nextVal ? "enabled" : "disabled"} for "${category.name}"`);
+    } catch (err: any) {
+      // Revert on error
+      setCategories((prev) =>
+        prev.map((c) => ((c._id ?? c.id) === categoryId ? { ...c, showFilters: currentVal } : c))
+      );
+      toast.error(err?.response?.data?.message || "Failed to toggle filter status");
+    }
   };
 
   const handleDeleteClick = (category: ListCategory) => {
@@ -516,18 +582,18 @@ const ListCategory = () => {
     if (name === "image") {
       const file = files?.[0];
       if (file) {
-        if (file.size > 1024 * 1024) {
+        // Revoke old URL to prevent memory leaks if switching images
+        if (imagePreview && imagePreview.startsWith("blob:")) {
+          URL.revokeObjectURL(imagePreview);
+        }
+        const compressed = await compressImage(file);
+        if (compressed.size > 1024 * 1024) {
           toast.dismiss();
           toast.error("Image size must be less than 1 MB.");
           const input = document.getElementById("updateImage") as HTMLInputElement | null;
           if (input) input.value = "";
           return;
         }
-        // Revoke old URL to prevent memory leaks if switching images
-        if (imagePreview && imagePreview.startsWith("blob:")) {
-          URL.revokeObjectURL(imagePreview);
-        }
-        const compressed = await compressImage(file);
         setFormData((prev) => ({ ...prev, image: compressed }));
         const previewUrl = URL.createObjectURL(compressed);
         setImagePreview(previewUrl);
@@ -538,6 +604,13 @@ const ListCategory = () => {
       }
     } else {
       setFormData((prev) => ({ ...prev, [name]: value }));
+    }
+    if (editErrors[name]) {
+      setEditErrors((prev) => {
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      });
     }
   };
 
@@ -561,11 +634,19 @@ const ListCategory = () => {
       return;
     }
 
-    if (!formData.code.trim()) {
+    const newErrors: Record<string, string> = {};
+
+    if (!selectedCategory?.parentId && !formData.code.trim()) {
+      newErrors.code = "Category code is required.";
+      setEditErrors(newErrors);
+      document.getElementById("editCategoryCode")?.focus();
       toast.error("Category code is required.", { id: "cat-edit-validate" });
       return;
     }
     if (formData.name.trim().length < 3) {
+      newErrors.name = "Category name must be at least 3 characters.";
+      setEditErrors(newErrors);
+      document.getElementById("editCategoryName")?.focus();
       toast.error("Category name must be at least 3 characters.", {
         id: "cat-edit-validate",
       });
@@ -575,7 +656,19 @@ const ListCategory = () => {
       formData.description.trim().length > 0 &&
       formData.description.trim().length < 10
     ) {
+      newErrors.description = "Description must be at least 10 characters.";
+      setEditErrors(newErrors);
+      document.getElementById("editCategoryDescription")?.focus();
       toast.error("Description must be at least 10 characters.", {
+        id: "cat-edit-validate",
+      });
+      return;
+    }
+    if (formData.description.trim().length > 1000) {
+      newErrors.description = "Description cannot exceed 1000 characters.";
+      setEditErrors(newErrors);
+      document.getElementById("editCategoryDescription")?.focus();
+      toast.error("Description cannot exceed 1000 characters.", {
         id: "cat-edit-validate",
       });
       return;
@@ -585,7 +678,8 @@ const ListCategory = () => {
     const noTextChange =
       formData.code === selectedCategory.code &&
       formData.name === selectedCategory.name &&
-      formData.description === selectedCategory.description;
+      formData.description === selectedCategory.description &&
+      formData.showFilters === (selectedCategory.showFilters !== false);
 
     const noImageChange = !formData.image; // no new image selected
 
@@ -604,6 +698,7 @@ const ListCategory = () => {
       data.append("code", formData.code);
       data.append("name", formData.name);
       data.append("description", formData.description);
+      data.append("showFilters", String(formData.showFilters));
 
       if (formData.image) {
         data.append("image", formData.image);
@@ -621,7 +716,28 @@ const ListCategory = () => {
       fetchCategories();
     } catch (err) {
       const _e = err as any;
-      toast.error(_e.response?.data?.message || "Error updating category", {
+      const backendErrors = _e.response?.data?.errors;
+      const firstError = backendErrors ? (Object.values(backendErrors).flat()[0] as string) : undefined;
+      const rawMsg = firstError || _e.response?.data?.message || "Error updating category";
+
+      const newErrors: Record<string, string> = {};
+      const lower = rawMsg.toLowerCase();
+      if (lower.includes("code") || lower.includes("unique")) {
+        newErrors.code = rawMsg;
+        document.getElementById("editCategoryCode")?.focus();
+      } else if (lower.includes("name") || lower.includes("slug")) {
+        newErrors.name = rawMsg;
+        document.getElementById("editCategoryName")?.focus();
+      } else if (lower.includes("description")) {
+        newErrors.description = rawMsg;
+        document.getElementById("editCategoryDescription")?.focus();
+      } else if (lower.includes("image")) {
+        newErrors.image = rawMsg;
+        document.getElementById("updateImage")?.parentElement?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+
+      setEditErrors(newErrors);
+      toast.error(rawMsg, {
         id: "category-update-error",
       });
     } finally {
@@ -657,6 +773,7 @@ const ListCategory = () => {
   // Helper to close and reset state for Edit Modal
   const closeEditModal = () => {
     setShowEditModal(false);
+    setEditErrors({});
     setLightboxImage(null);
     // Cleanup blob URL if one was created
     if (imagePreview && imagePreview.startsWith("blob:")) {
@@ -747,6 +864,37 @@ const ListCategory = () => {
               <p className="text-slate-600 max-w-2xl mt-2">
                 Organize and manage your product categories.
               </p>
+              <div className="flex items-center gap-2.5 mt-3">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  Storefront Shape:
+                </span>
+                <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-2xs">
+                  <button
+                    type="button"
+                    onClick={() => handleShapeChange("square")}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      storefrontCategoryShape === "square"
+                        ? "bg-slate-900 text-white shadow-xs"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                    }`}
+                  >
+                    <Square className="w-3.5 h-3.5" />
+                    Square
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleShapeChange("circle")}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      storefrontCategoryShape === "circle"
+                        ? "bg-slate-900 text-white shadow-xs"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                    }`}
+                  >
+                    <Circle className="w-3.5 h-3.5" />
+                    Circle
+                  </button>
+                </div>
+              </div>
             </div>
 
             {/* Stats Card - Always visible, responsive layout */}
@@ -1137,7 +1285,23 @@ const ListCategory = () => {
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-indigo-100 bg-indigo-50/60 text-xs font-medium text-indigo-600 hover:bg-indigo-100 hover:border-indigo-200 transition-colors"
                       >
                         <Tag className="h-3.5 w-3.5" />
-                        Filters
+                        Attributes
+                      </button>
+                    )}
+
+                    {canEdit && (
+                      <button
+                        type="button"
+                        onClick={(e) => handleToggleFilters(cat, e)}
+                        title={cat.showFilters !== false ? "Storefront filters are active. Click to disable." : "Storefront filters are disabled. Click to enable."}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors cursor-pointer ${
+                          cat.showFilters !== false
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                            : "border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100"
+                        }`}
+                      >
+                        <SlidersHorizontal className="h-3.5 w-3.5" />
+                        <span>Filters: {cat.showFilters !== false ? "On" : "Off"}</span>
                       </button>
                     )}
                   </div>
@@ -1192,15 +1356,6 @@ const ListCategory = () => {
               selectedCategory?.parentId ? "border-indigo-100" : "border-slate-100"
             }`}
           >
-            {/* Accent bar */}
-            <div
-              className={`h-1.5 shrink-0 ${
-                selectedCategory?.parentId
-                  ? "bg-gradient-to-r from-indigo-500 to-indigo-600"
-                  : "bg-gradient-to-r from-slate-900 to-slate-700"
-              }`}
-            />
-
             {/* Header */}
             <div
               className={`flex items-center justify-between px-6 md:px-8 pt-6 md:pt-8 pb-4 border-b shrink-0 ${
@@ -1269,14 +1424,25 @@ const ListCategory = () => {
                           Category code
                         </label>
                         <input
+                          id="editCategoryCode"
                           type="text"
                           name="code"
                           maxLength={15}
                           value={formData.code}
                           onChange={handleChange}
-                          className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-slate-800 font-mono uppercase focus:outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-400 transition-all duration-200"
+                          className={`w-full px-4 py-3 rounded-xl border font-mono uppercase focus:outline-none transition-all duration-200 ${
+                            editErrors.code
+                              ? "border-rose-500 ring-2 ring-rose-100 bg-rose-50/10 focus:ring-rose-200 focus:border-rose-500 text-slate-900"
+                              : "border-slate-200 bg-white text-slate-800 focus:ring-2 focus:ring-slate-300 focus:border-slate-400"
+                          }`}
                           required
                         />
+                        {editErrors.code && (
+                          <div className="flex items-center gap-1.5 mt-1.5 animate-fadeIn">
+                            <AlertCircle className="h-3.5 w-3.5 text-rose-500 shrink-0" />
+                            <span className="text-xs font-semibold text-rose-600">{editErrors.code}</span>
+                          </div>
+                        )}
                       </div>
                     )}
                     <div>
@@ -1284,32 +1450,49 @@ const ListCategory = () => {
                         {selectedCategory?.parentId ? "Subcategory name" : "Category name"}
                       </label>
                       <input
+                        id="editCategoryName"
                         type="text"
                         name="name"
                         maxLength={40}
                         value={formData.name}
                         onChange={handleChange}
                         className={`w-full px-4 py-3 rounded-xl border bg-white text-slate-800 focus:outline-none focus:ring-2 transition-all duration-200 ${
-                          selectedCategory?.parentId
-                            ? "border-slate-200 focus:ring-indigo-200 focus:border-indigo-400"
-                            : "border-slate-200 focus:ring-slate-300 focus:border-slate-400"
+                          editErrors.name
+                            ? "border-rose-500 ring-2 ring-rose-100 bg-rose-50/10 focus:ring-rose-200 focus:border-rose-500 text-slate-900"
+                            : selectedCategory?.parentId
+                              ? "border-slate-200 focus:ring-indigo-200 focus:border-indigo-400"
+                              : "border-slate-200 focus:ring-slate-300 focus:border-slate-400"
                         }`}
                         required
                       />
+                      {editErrors.name && (
+                        <div className="flex items-center gap-1.5 mt-1.5 animate-fadeIn">
+                          <AlertCircle className="h-3.5 w-3.5 text-rose-500 shrink-0" />
+                          <span className="text-xs font-semibold text-rose-600">{editErrors.name}</span>
+                        </div>
+                      )}
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-slate-800 mb-1.5">
-                        Description
-                      </label>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="block text-sm font-semibold text-slate-800">
+                          Description
+                        </label>
+                        <span className={`text-[11px] font-medium ${formData.description.length > 1000 ? "text-rose-500 font-bold" : "text-slate-400"}`}>
+                          {formData.description.length}/1000
+                        </span>
+                      </div>
                       <textarea
+                        id="editCategoryDescription"
                         name="description"
                         value={formData.description}
                         onChange={handleChange}
                         rows={4}
                         className={`w-full px-4 py-3 rounded-xl border bg-white text-slate-800 focus:outline-none focus:ring-2 transition-all duration-200 resize-none ${
-                          selectedCategory?.parentId
-                            ? "border-slate-200 focus:ring-indigo-200 focus:border-indigo-400"
-                            : "border-slate-200 focus:ring-slate-300 focus:border-slate-400"
+                          editErrors.description
+                            ? "border-rose-500 ring-2 ring-rose-100 bg-rose-50/10 focus:ring-rose-200 focus:border-rose-500 text-slate-900"
+                            : selectedCategory?.parentId
+                              ? "border-slate-200 focus:ring-indigo-200 focus:border-indigo-400"
+                              : "border-slate-200 focus:ring-slate-300 focus:border-slate-400"
                         }`}
                         placeholder={
                           selectedCategory?.parentId
@@ -1317,6 +1500,12 @@ const ListCategory = () => {
                             : "Describe this category..."
                         }
                       />
+                      {editErrors.description && (
+                        <div className="flex items-center gap-1.5 mt-1.5 animate-fadeIn">
+                          <AlertCircle className="h-3.5 w-3.5 text-rose-500 shrink-0" />
+                          <span className="text-xs font-semibold text-rose-600">{editErrors.description}</span>
+                        </div>
+                      )}
                     </div>
 
                     {/* Image — root categories only */}
@@ -1364,6 +1553,37 @@ const ListCategory = () => {
                         />
                       </div>
                     )}
+
+                    {/* Storefront Filters Setting */}
+                    <div className="flex items-center justify-between p-4 rounded-xl border border-slate-200 bg-slate-50/50 transition-colors">
+                      <div className="space-y-0.5 pr-4">
+                        <label
+                          onClick={() => setFormData((prev) => ({ ...prev, showFilters: !prev.showFilters }))}
+                          className="text-sm font-semibold text-slate-800 flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <SlidersHorizontal className="h-4 w-4 text-indigo-600" />
+                          Storefront Product Filters
+                        </label>
+                        <p className="text-xs text-slate-500 leading-relaxed">
+                          Enable sidebar filters (ratings, price range & attributes) on this category's storefront page.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={formData.showFilters}
+                        onClick={() => setFormData((prev) => ({ ...prev, showFilters: !prev.showFilters }))}
+                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                          formData.showFilters ? "bg-indigo-600" : "bg-slate-300"
+                        }`}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                            formData.showFilters ? "translate-x-5" : "translate-x-0"
+                          }`}
+                        />
+                      </button>
+                    </div>
                   </div>
 
                   {/* RIGHT — live preview, mirrors the real card markup from the grid above */}

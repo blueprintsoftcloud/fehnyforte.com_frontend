@@ -1,14 +1,16 @@
 // src/components/DiscountPage.tsx
 //
-// Template-aware like HeroSection.tsx — activeTemplate picks which hand-built layout
-// renders the SAME DISCOUNT_PANEL rows (see companySettings.controller.ts's
-// SECTION_TEMPLATE_KEYS: this section has no per-template content, only layout).
-// Template1 below is byte-for-byte the left/right split-grid layout that existed before
-// this split.
+// Template-aware banner section for DISCOUNT_PANEL items.
+// All templates match the high-end luxury banner aesthetic of Template 1:
+// 1: Split Grid (Dual Banner Showcase - 2 wide banners side-by-side)
+// 2: Triple Showcase (3 wide banners side-by-side in a single line)
+// 3: Cinematic Panorama (Full-width wide editorial banner carousel)
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import api from "../utils/api";
+import { formatDiscountBadge } from "../utils/product";
 
 // Fallback local images used when no banners are configured in the backend
 import image20 from "../assets/1020.jpeg";
@@ -20,6 +22,7 @@ interface Banner {
   id: string;
   title: string;
   image: string;
+  link?: string | null;
   discount: string | null;
   description: string | null;
 }
@@ -36,259 +39,522 @@ const FALLBACK_HEADER = {
   subtitle: "Grace at a Great Price! Sarees on Discount",
 };
 
-const ShopNowButton = ({ onClick }: { onClick: () => void }) => (
-  <button
-    onClick={onClick}
-    className="px-6 py-2 border border-white text-white text-sm font-semibold uppercase tracking-wider hover:bg-white hover:text-black transition-colors duration-300"
-  >
-    Shop Now
-  </button>
-);
-
 interface TemplateProps {
   banners: Banner[];
   header: typeof FALLBACK_HEADER;
-  handleShopNow: () => void;
+  handleShopNow: (link?: string | null) => void;
 }
 
-const Template1 = ({ banners, header, handleShopNow }: TemplateProps) => {
-  // Panels: first two fill left/center columns; rest fill right column
-  const leftPanels = banners.slice(0, 2);
-  const rightPanels = banners.slice(2);
+// ─── Section Header ────────────────────────────────────────────────────────
+// Left-aligned header matching CategorySection style (no subtitle, no underline).
+const DiscountHeader = ({ header }: { header: typeof FALLBACK_HEADER }) => {
+  const hasTitle = Boolean(header?.title && header.title.trim());
+  if (!hasTitle) return null;
 
   return (
-    <div className="min-h-screen bg-white font-sans text-gray-900">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        {/* --- HEADER SECTION --- */}
-        <div className="mb-10">
-          <h4 className="text-[var(--theme-accent)] font-bold uppercase tracking-wider text-sm mb-2">
-            Discount
-          </h4>
-          <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
-            {header.title}
-          </h2>
-          <p className="text-gray-500 max-w-xl text-lg">{header.subtitle}</p>
-        </div>
-
-        {/* --- GRID LAYOUT --- */}
-        {banners.length > 0 ? (
-          <div
-            className={`grid gap-6 h-auto lg:h-[600px] ${
-              rightPanels.length === 0
-                ? "grid-cols-1 md:grid-cols-2"
-                : "grid-cols-1 md:grid-cols-2 lg:grid-cols-3"
-            }`}
-          >
-            {/* Left panels (positions 0, 1) */}
-            {leftPanels.map((panel, i) => (
-              <div
-                key={panel.id}
-                className="relative group overflow-hidden h-[500px] lg:h-full rounded-none"
-              >
-                <img
-                  src={panel.image}
-                  alt={panel.title}
-                  className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-                <div className="absolute bottom-10 left-8 text-white">
-                  <h3 className="text-sm font-bold uppercase tracking-wider mb-2">
-                    {panel.title}
-                  </h3>
-                  {panel.discount && (
-                    <div className="text-5xl font-bold mb-4">{panel.discount}</div>
-                  )}
-                  {panel.description && (
-                    <p className="text-gray-200 text-sm mb-6 max-w-[200px]">
-                      {panel.description}
-                    </p>
-                  )}
-                  <ShopNowButton onClick={handleShopNow} />
-                </div>
-              </div>
-            ))}
-
-            {/* Right column panels (positions 2+) */}
-            {rightPanels.length > 0 && (
-              <div className="flex flex-col gap-6 h-[600px] lg:h-full">
-                {rightPanels.map((panel, i) => (
-                  <div
-                    key={panel.id}
-                    className="relative group overflow-hidden flex-1 w-full"
-                  >
-                    <img
-                      src={panel.image}
-                      alt={panel.title}
-                      className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
-                    />
-                    <div className="absolute inset-0 bg-black/30" />
-                    <div
-                      className={`absolute inset-0 flex flex-col justify-center px-8 text-white ${
-                        i % 2 === 1 ? "items-end text-right" : ""
-                      }`}
-                    >
-                      <h3 className="text-sm font-bold uppercase tracking-wider mb-1">
-                        {panel.title}
-                      </h3>
-                      {panel.discount && (
-                        <div className="text-4xl font-bold mb-3">{panel.discount}</div>
-                      )}
-                      {panel.description && (
-                        <p className="text-gray-200 text-xs mb-5 max-w-[200px]">
-                          {panel.description}
-                        </p>
-                      )}
-                      <div>
-                        <ShopNowButton onClick={handleShopNow} />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="text-center py-20 border border-dashed border-gray-200 rounded-2xl bg-gray-50/50 max-w-3xl mx-auto mt-8 px-6">
-            <div className="w-16 h-16 bg-[var(--theme-primary)]/10 text-[var(--theme-primary)] rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
-            </div>
-            <h3 className="text-lg font-bold text-gray-900 mb-1">No Active Promotions</h3>
-            <p className="text-gray-500 text-sm max-w-sm mx-auto mb-6">
-              We don't have any active discount events right now. Please check back later or explore our regular collections.
-            </p>
-            <button
-              onClick={handleShopNow}
-              className="px-6 py-2.5 bg-[var(--theme-primary)] text-[var(--theme-primary-ink)] text-sm font-semibold uppercase tracking-wider hover:bg-[var(--theme-primary-hover)] transition-colors rounded-xl shadow-md cursor-pointer"
-            >
-              Explore Products
-            </button>
-          </div>
-        )}
+    <div className="flex items-baseline justify-between mb-6 sm:mb-8 pb-3 border-b border-gray-100">
+      <div>
+        <h2 className="text-xl sm:text-2xl font-medium tracking-tight text-gray-950 font-sans uppercase">
+          {header.title}
+        </h2>
       </div>
     </div>
   );
 };
 
-// Shared header block — every new template below uses the identical header, only the
-// panel grid underneath differs.
-const DiscountHeader = ({ header }: { header: typeof FALLBACK_HEADER }) => (
-  <div className="mb-10">
-    <h4 className="text-[var(--theme-accent)] font-bold uppercase tracking-wider text-sm mb-2">
-      Discount
-    </h4>
-    <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">{header.title}</h2>
-    <p className="text-gray-500 max-w-xl text-lg">{header.subtitle}</p>
-  </div>
-);
+// ─── Shared Reusable Banner Card ───────────────────────────────────────────
+// Entire image card is clickable to link if present (no extra "Shop Now" text).
+// Elegant text overlay displays when title/discount/description are entered;
+// pure graphic banner displays unadorned when text fields are omitted.
+interface BannerCardProps {
+  banner: Banner;
+  className?: string;
+  imageClassName?: string;
+  aspectRatioClass?: string;
+  handleShopNow: (link?: string | null) => void;
+}
 
-// ─── Template 2: Masonry ────────────────────────────────────────────────────────
-// Varied-height cards in a masonry column layout — a more organic, less rigidly-gridded
-// feel than Template1's fixed left/right split.
-const Template2 = ({ banners, header, handleShopNow }: TemplateProps) => (
-  <div className="min-h-screen bg-white font-sans text-gray-900">
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-      <DiscountHeader header={header} />
-      <div className="columns-1 sm:columns-2 lg:columns-3 gap-6 [column-fill:_balance]">
-        {banners.map((panel, i) => (
-          <div
-            key={panel.id}
-            className="relative group overflow-hidden rounded-2xl mb-6 break-inside-avoid"
-            style={{ aspectRatio: i % 3 === 0 ? "3/4" : i % 3 === 1 ? "1/1" : "4/5" }}
-          >
-            <img
-              src={panel.image}
-              alt={panel.title}
-              className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-transparent to-transparent" />
-            <div className="absolute bottom-6 left-6 right-6 text-white">
-              <h3 className="text-xs font-bold uppercase tracking-wider mb-1">{panel.title}</h3>
-              {panel.discount && <div className="text-3xl font-bold mb-2">{panel.discount}</div>}
-              <ShopNowButton onClick={handleShopNow} />
-            </div>
-          </div>
-        ))}
-      </div>
+const BannerCard: React.FC<BannerCardProps> = ({
+  banner,
+  className = "",
+  imageClassName = "",
+  aspectRatioClass = "aspect-[16/9] sm:aspect-[16/10]",
+  handleShopNow,
+}) => {
+  const hasLink = Boolean(banner.link && banner.link.trim());
+  const hasText = Boolean(banner.title || banner.discount || banner.description);
+
+  return (
+    <div
+      onClick={() => hasLink && handleShopNow(banner.link)}
+      className={`relative w-full overflow-hidden rounded-2xl bg-gray-100 shadow-sm group select-none ${aspectRatioClass} ${
+        hasLink ? "cursor-pointer hover:shadow-md" : "cursor-default"
+      } ${className}`}
+    >
+      <img
+        src={banner.image}
+        alt={banner.title || "Banner"}
+        className={`w-full h-full object-cover object-center transition-transform duration-500 group-hover:scale-[1.02] ${imageClassName}`}
+        draggable={false}
+      />
+
+      {hasText && (
+        <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/25 to-transparent flex flex-col justify-end p-5 sm:p-7 md:p-8 text-white pointer-events-none">
+          {banner.discount && (
+            <span className="inline-block self-start text-[11px] sm:text-xs font-extrabold uppercase tracking-wider text-amber-300 bg-black/40 backdrop-blur-md px-2.5 py-0.5 rounded-full border border-amber-300/30 mb-2 shadow-xs">
+              {formatDiscountBadge(banner.discount)}
+            </span>
+          )}
+          {banner.title && (
+            <h3 className="font-serif text-xl sm:text-2xl md:text-3xl font-semibold tracking-tight text-white drop-shadow-md">
+              {banner.title}
+            </h3>
+          )}
+          {banner.description && (
+            <p className="text-xs sm:text-sm text-gray-200 italic mt-1 line-clamp-2 max-w-xs sm:max-w-sm drop-shadow-sm">
+              {banner.description}
+            </p>
+          )}
+        </div>
+      )}
     </div>
-  </div>
-);
+  );
+};
 
-// ─── Template 3: Ticker Strip ───────────────────────────────────────────────────
-// A single horizontal row of compact cards — the simplest, most condensed treatment,
-// good for a store running many small promotions rather than a few hero-sized ones.
-const Template3 = ({ banners, header, handleShopNow }: TemplateProps) => (
-  <div className="min-h-screen bg-white font-sans text-gray-900">
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-      <DiscountHeader header={header} />
-      <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0" style={{ scrollbarWidth: "none" }}>
-        {banners.map((panel) => (
-          <div
-            key={panel.id}
-            className="relative group overflow-hidden rounded-xl shrink-0 w-56 sm:w-64 aspect-[3/4]"
-          >
-            <img
-              src={panel.image}
-              alt={panel.title}
-              className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
-            <div className="absolute bottom-4 left-4 right-4 text-white">
-              <h3 className="text-[11px] font-bold uppercase tracking-wider truncate">{panel.title}</h3>
-              {panel.discount && <div className="text-xl font-bold mt-1">{panel.discount}</div>}
-            </div>
-          </div>
-        ))}
-      </div>
-      <button
-        onClick={handleShopNow}
-        className="mt-8 px-6 py-2.5 bg-[var(--theme-primary)] text-[var(--theme-primary-ink)] text-sm font-semibold uppercase tracking-wider hover:bg-[var(--theme-primary-hover)] transition-colors rounded-xl shadow-md"
-      >
-        Shop All Offers
-      </button>
-    </div>
-  </div>
-);
+// ─── Template 1: Split Grid (Dual Banner Showcase) ─────────────────────────
+// Displays 2 wide banners side-by-side in one line, starting with clean margin at the start.
+// If more than 2 banners are present, smooth navigation arrows allow sliding through them without wrapping.
+const Template1 = ({ banners, header, handleShopNow }: TemplateProps) => {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [isHovered, setIsHovered] = useState(false);
+  const [translateX, setTranslateX] = useState(0);
+  const [cardsPerView, setCardsPerView] = useState(2);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const touchStartX = useRef<number | null>(null);
 
-// ─── Template 4: Badge Grid ─────────────────────────────────────────────────────
-// Uniform square cards, each with a large prominent discount badge in the corner —
-// clean, catalog-style e-commerce grid rather than photo-led editorial panels.
-const Template4 = ({ banners, header, handleShopNow }: TemplateProps) => (
-  <div className="min-h-screen bg-white font-sans text-gray-900">
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-      <DiscountHeader header={header} />
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-5">
-        {banners.map((panel) => (
-          <button
-            key={panel.id}
-            onClick={handleShopNow}
-            className="relative group overflow-hidden rounded-2xl aspect-square text-left cursor-pointer"
-          >
-            <img
-              src={panel.image}
-              alt={panel.title}
-              className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
-            />
-            <div className="absolute inset-0 bg-black/20 group-hover:bg-black/35 transition-colors" />
-            {panel.discount && (
-              <span
-                className="absolute top-3 right-3 rounded-full px-3 py-1.5 text-xs font-black shadow-md"
-                style={{ background: "var(--theme-accent)", color: "var(--theme-accent-ink)" }}
+  if (banners.length === 0) return null;
+
+  const isSingle = banners.length === 1;
+
+  useEffect(() => {
+    const updateCardsPerView = () => {
+      setCardsPerView(window.innerWidth >= 640 ? 2 : 1);
+    };
+    updateCardsPerView();
+    window.addEventListener("resize", updateCardsPerView);
+    return () => window.removeEventListener("resize", updateCardsPerView);
+  }, []);
+
+  const maxIndex = Math.max(0, banners.length - cardsPerView);
+
+  const getOffset = (idx: number) => {
+    if (!trackRef.current) return 0;
+    const children = trackRef.current.children;
+    if (children.length > idx && children.length > 0) {
+      const first = children[0] as HTMLElement;
+      const target = children[idx] as HTMLElement;
+      if (first && target) {
+        return target.offsetLeft - first.offsetLeft;
+      }
+    }
+    return 0;
+  };
+
+  useEffect(() => {
+    if (!trackRef.current) return;
+    const update = () => {
+      setTranslateX(getOffset(currentIndex));
+    };
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, [currentIndex, cardsPerView, banners]);
+
+  useEffect(() => {
+    if (currentIndex > maxIndex) {
+      setCurrentIndex(maxIndex);
+    }
+  }, [maxIndex, currentIndex]);
+
+  // Auto-advance if more banners than visible
+  useEffect(() => {
+    if (banners.length <= cardsPerView || isHovered) return;
+    const interval = setInterval(() => {
+      setCurrentIndex((prev) => (prev >= maxIndex ? 0 : prev + 1));
+    }, 5500);
+    return () => clearInterval(interval);
+  }, [banners.length, cardsPerView, maxIndex, isHovered]);
+
+  const handlePrev = () => {
+    setCurrentIndex((prev) => (prev <= 0 ? maxIndex : prev - 1));
+  };
+
+  const handleNext = () => {
+    setCurrentIndex((prev) => (prev >= maxIndex ? 0 : prev + 1));
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    setIsHovered(true);
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current === null) return;
+    const diff = touchStartX.current - e.changedTouches[0].clientX;
+    if (diff > 40) {
+      handleNext();
+    } else if (diff < -40) {
+      handlePrev();
+    }
+    touchStartX.current = null;
+    setIsHovered(false);
+  };
+
+  const showArrows = banners.length > cardsPerView;
+
+  // Single full-width banner
+  if (isSingle) {
+    return (
+      <section className="w-full py-4 sm:py-6 bg-transparent">
+        <div className="w-full px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12">
+          <DiscountHeader header={header} />
+          <BannerCard
+            banner={banners[0]}
+            className="w-full"
+            aspectRatioClass="w-full aspect-[2/1] sm:aspect-[2.4/1] md:aspect-[2.8/1] lg:aspect-[3.2/1] max-h-[450px]"
+            handleShopNow={handleShopNow}
+          />
+        </div>
+      </section>
+    );
+  }
+
+  // 2 or more banners: Full 2-split banner showcase
+  return (
+    <section className="w-full py-4 sm:py-6 bg-transparent">
+      <div className="w-full px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12">
+        <DiscountHeader header={header} />
+        <div
+          className="relative group/track select-none"
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+        >
+          {/* Outer floating side arrow buttons */}
+          {showArrows && (
+            <>
+              <button
+                type="button"
+                onClick={handlePrev}
+                aria-label="Previous banners"
+                className="flex absolute left-1 sm:-left-3 lg:-left-4 top-1/2 -translate-y-1/2 z-20 h-9 w-9 sm:h-11 sm:w-11 items-center justify-center rounded-full bg-white text-gray-900 shadow-xl border border-gray-100 hover:bg-black hover:text-white transition-all duration-300 hover:scale-105 active:scale-95 cursor-pointer opacity-90 hover:opacity-100"
               >
-                {panel.discount}
-              </span>
-            )}
-            <div className="absolute bottom-4 left-4 right-4">
-              <h3 className="text-white text-xs font-bold uppercase tracking-wider truncate">{panel.title}</h3>
-            </div>
-          </button>
-        ))}
-      </div>
-    </div>
-  </div>
-);
+                <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6" />
+              </button>
+              <button
+                type="button"
+                onClick={handleNext}
+                aria-label="Next banners"
+                className="flex absolute right-1 sm:-right-3 lg:-right-4 top-1/2 -translate-y-1/2 z-20 h-9 w-9 sm:h-11 sm:w-11 items-center justify-center rounded-full bg-white text-gray-900 shadow-xl border border-gray-100 hover:bg-black hover:text-white transition-all duration-300 hover:scale-105 active:scale-95 cursor-pointer opacity-90 hover:opacity-100"
+              >
+                <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6" />
+              </button>
+            </>
+          )}
 
+          {/* Viewport: keeps all cards in ONE single horizontal line */}
+          <div className="overflow-hidden w-full rounded-2xl">
+            <div
+              ref={trackRef}
+              className="flex gap-3 sm:gap-5 transition-transform duration-500 ease-out will-change-transform"
+              style={{
+                transform: `translateX(-${translateX}px)`,
+              }}
+            >
+              {banners.map((b) => (
+                <div
+                  key={b.id}
+                  className="flex-none shrink-0 w-full sm:w-[calc(50%-0.625rem)]"
+                >
+                  <BannerCard
+                    banner={b}
+                    className="w-full"
+                    aspectRatioClass="w-full aspect-[16/9] sm:aspect-[1.85/1] lg:aspect-[2.1/1] max-h-[290px] sm:max-h-[330px] lg:max-h-[350px]"
+                    handleShopNow={handleShopNow}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+};
+
+// ─── Template 2: Triple Showcase (3 Wide Banners in 1 Single Row) ──────────
+// 3 wide banner columns side-by-side in one line across desktop.
+// If more than 3 banners are present, smooth navigation arrows allow sliding through them without wrapping.
+const Template2 = ({ banners, header, handleShopNow }: TemplateProps) => {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [isHovered, setIsHovered] = useState(false);
+  const [translateX, setTranslateX] = useState(0);
+  const [cardsPerView, setCardsPerView] = useState(3);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const touchStartX = useRef<number | null>(null);
+
+  if (banners.length === 0) return null;
+
+  useEffect(() => {
+    const updateCardsPerView = () => {
+      if (window.innerWidth >= 1024) {
+        setCardsPerView(3);
+      } else if (window.innerWidth >= 640) {
+        setCardsPerView(2);
+      } else {
+        setCardsPerView(1);
+      }
+    };
+    updateCardsPerView();
+    window.addEventListener("resize", updateCardsPerView);
+    return () => window.removeEventListener("resize", updateCardsPerView);
+  }, []);
+
+  const maxIndex = Math.max(0, banners.length - cardsPerView);
+
+  const getOffset = (idx: number) => {
+    if (!trackRef.current) return 0;
+    const children = trackRef.current.children;
+    if (children.length > idx && children.length > 0) {
+      const first = children[0] as HTMLElement;
+      const target = children[idx] as HTMLElement;
+      if (first && target) {
+        return target.offsetLeft - first.offsetLeft;
+      }
+    }
+    return 0;
+  };
+
+  useEffect(() => {
+    if (!trackRef.current) return;
+    const update = () => {
+      setTranslateX(getOffset(currentIndex));
+    };
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, [currentIndex, cardsPerView, banners]);
+
+  useEffect(() => {
+    if (currentIndex > maxIndex) {
+      setCurrentIndex(maxIndex);
+    }
+  }, [maxIndex, currentIndex]);
+
+  // Auto-advance if more banners than visible
+  useEffect(() => {
+    if (banners.length <= cardsPerView || isHovered) return;
+    const interval = setInterval(() => {
+      setCurrentIndex((prev) => (prev >= maxIndex ? 0 : prev + 1));
+    }, 5500);
+    return () => clearInterval(interval);
+  }, [banners.length, cardsPerView, maxIndex, isHovered]);
+
+  const handlePrev = () => {
+    setCurrentIndex((prev) => (prev <= 0 ? maxIndex : prev - 1));
+  };
+
+  const handleNext = () => {
+    setCurrentIndex((prev) => (prev >= maxIndex ? 0 : prev + 1));
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    setIsHovered(true);
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current === null) return;
+    const diff = touchStartX.current - e.changedTouches[0].clientX;
+    if (diff > 40) {
+      handleNext();
+    } else if (diff < -40) {
+      handlePrev();
+    }
+    touchStartX.current = null;
+    setIsHovered(false);
+  };
+
+  const showArrows = banners.length > cardsPerView;
+
+  return (
+    <section className="w-full py-4 sm:py-6 bg-transparent">
+      <div className="w-full px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12">
+        <DiscountHeader header={header} />
+        <div
+          className="relative group/track select-none"
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+        >
+          {/* Outer floating side arrow buttons */}
+          {showArrows && (
+            <>
+              <button
+                type="button"
+                onClick={handlePrev}
+                aria-label="Previous banners"
+                className="flex absolute left-1 sm:-left-3 lg:-left-4 top-1/2 -translate-y-1/2 z-20 h-9 w-9 sm:h-11 sm:w-11 items-center justify-center rounded-full bg-white text-gray-900 shadow-xl border border-gray-100 hover:bg-black hover:text-white transition-all duration-300 hover:scale-105 active:scale-95 cursor-pointer opacity-90 hover:opacity-100"
+              >
+                <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6" />
+              </button>
+              <button
+                type="button"
+                onClick={handleNext}
+                aria-label="Next banners"
+                className="flex absolute right-1 sm:-right-3 lg:-right-4 top-1/2 -translate-y-1/2 z-20 h-9 w-9 sm:h-11 sm:w-11 items-center justify-center rounded-full bg-white text-gray-900 shadow-xl border border-gray-100 hover:bg-black hover:text-white transition-all duration-300 hover:scale-105 active:scale-95 cursor-pointer opacity-90 hover:opacity-100"
+              >
+                <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6" />
+              </button>
+            </>
+          )}
+
+          {/* Viewport: keeps all cards in ONE single horizontal line */}
+          <div className="overflow-hidden w-full rounded-2xl">
+            <div
+              ref={trackRef}
+              className="flex gap-3 sm:gap-5 transition-transform duration-500 ease-out will-change-transform"
+              style={{
+                transform: `translateX(-${translateX}px)`,
+              }}
+            >
+              {banners.map((b) => (
+                <div
+                  key={b.id}
+                  className="flex-none shrink-0 w-full sm:w-[calc(50%-0.625rem)] lg:w-[calc(33.333%-0.833rem)]"
+                >
+                  <BannerCard
+                    banner={b}
+                    className="w-full"
+                    aspectRatioClass="w-full aspect-[16/9] sm:aspect-[1.85/1] lg:aspect-[1.95/1] max-h-[260px] sm:max-h-[300px] lg:max-h-[320px]"
+                    handleShopNow={handleShopNow}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+};
+
+// ─── Template 3: Cinematic Panorama (Full-Width Wide Editorial Banner) ─────
+// High-impact panoramic banner carousel across the full width of the container.
+// Fills 100% of the available width with zero side cutoff.
+const Template3 = ({ banners, header, handleShopNow }: TemplateProps) => {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [isHovered, setIsHovered] = useState(false);
+  const touchStartX = useRef<number | null>(null);
+
+  if (banners.length === 0) return null;
+
+  const total = banners.length;
+
+  useEffect(() => {
+    if (currentIndex >= total) {
+      setCurrentIndex(0);
+    }
+  }, [total, currentIndex]);
+
+  // Auto-advance every 5.5s
+  useEffect(() => {
+    if (total <= 1 || isHovered) return;
+    const interval = setInterval(() => {
+      setCurrentIndex((prev) => (prev >= total - 1 ? 0 : prev + 1));
+    }, 5500);
+    return () => clearInterval(interval);
+  }, [total, isHovered]);
+
+  const handlePrev = () => {
+    setCurrentIndex((prev) => (prev <= 0 ? total - 1 : prev - 1));
+  };
+
+  const handleNext = () => {
+    setCurrentIndex((prev) => (prev >= total - 1 ? 0 : prev + 1));
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    setIsHovered(true);
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current === null) return;
+    const diff = touchStartX.current - e.changedTouches[0].clientX;
+    if (diff > 40) {
+      handleNext();
+    } else if (diff < -40) {
+      handlePrev();
+    }
+    touchStartX.current = null;
+    setIsHovered(false);
+  };
+
+  const activeBanner = banners[currentIndex] || banners[0];
+
+  return (
+    <section className="w-full py-4 sm:py-6 bg-transparent">
+      <div className="w-full px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12">
+        <DiscountHeader header={header} />
+        <div
+          className="relative group select-none w-full"
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+        >
+          {/* Floating outer navigation arrows */}
+          {total > 1 && (
+            <>
+              <button
+                type="button"
+                onClick={handlePrev}
+                aria-label="Previous banner"
+                className="hidden md:flex absolute -left-3 lg:-left-4 top-1/2 -translate-y-1/2 z-20 h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-full bg-white text-gray-900 shadow-xl border border-gray-100 hover:bg-black hover:text-white transition-all duration-300 hover:scale-105 active:scale-95 cursor-pointer opacity-90 hover:opacity-100"
+              >
+                <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6" />
+              </button>
+              <button
+                type="button"
+                onClick={handleNext}
+                aria-label="Next banner"
+                className="hidden md:flex absolute -right-3 lg:-right-4 top-1/2 -translate-y-1/2 z-20 h-10 w-10 sm:h-11 sm:w-11 items-center justify-center rounded-full bg-white text-gray-900 shadow-xl border border-gray-100 hover:bg-black hover:text-white transition-all duration-300 hover:scale-105 active:scale-95 cursor-pointer opacity-90 hover:opacity-100"
+              >
+                <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6" />
+              </button>
+            </>
+          )}
+
+          {/* Full-Width Panoramic Banner */}
+          <div className="w-full overflow-hidden rounded-2xl shadow-sm transition-opacity duration-500">
+            <BannerCard
+              key={activeBanner.id}
+              banner={activeBanner}
+              className="w-full"
+              aspectRatioClass="w-full aspect-[2/1] sm:aspect-[2.4/1] md:aspect-[2.8/1] lg:aspect-[3.2/1] xl:aspect-[3.5/1] max-h-[320px] sm:max-h-[380px] md:max-h-[420px] lg:max-h-[450px]"
+              handleShopNow={handleShopNow}
+            />
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+};
+
+// ─── Main DiscountPage Component ───────────────────────────────────────────
 const DiscountPage = () => {
   const navigate = useNavigate();
   const [banners, setBanners] = useState<Banner[]>([]);
@@ -300,9 +566,16 @@ const DiscountPage = () => {
     api
       .get("/home-banners?type=DISCOUNT_PANEL")
       .then(({ data }) => {
-        const activeBanners: Banner[] = (data.banners ?? []).filter(
-          (b: any) => b.isActive,
-        );
+        const activeBanners: Banner[] = (data.banners ?? [])
+          .filter((b: any) => b.isActive)
+          .map((b: any) => ({
+            id: b.id,
+            title: b.title,
+            image: b.image,
+            link: b.link,
+            discount: b.discount,
+            description: b.description,
+          }));
         setBanners(activeBanners);
         if (data.discountSection) {
           setHeader(data.discountSection);
@@ -323,7 +596,15 @@ const DiscountPage = () => {
       .catch(() => { });
   }, []);
 
-  const handleShopNow = () => navigate("/products");
+  const handleShopNow = (link?: string | null) => {
+    if (!link || !link.trim()) return;
+    const trimmed = link.trim();
+    if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+      window.open(trimmed, "_blank", "noopener,noreferrer");
+    } else {
+      navigate(trimmed.startsWith("/") ? trimmed : `/${trimmed}`);
+    }
+  };
 
   if (!loaded) return null; // avoid layout shift while loading
 
@@ -333,9 +614,8 @@ const DiscountPage = () => {
     case 2:
       return <Template2 banners={banners} header={header} handleShopNow={handleShopNow} />;
     case 3:
-      return <Template3 banners={banners} header={header} handleShopNow={handleShopNow} />;
     case 4:
-      return <Template4 banners={banners} header={header} handleShopNow={handleShopNow} />;
+      return <Template3 banners={banners} header={header} handleShopNow={handleShopNow} />;
     default:
       return <Template1 banners={banners} header={header} handleShopNow={handleShopNow} />;
   }

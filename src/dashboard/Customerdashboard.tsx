@@ -13,7 +13,8 @@ import toast, { Toaster } from "react-hot-toast";
 import api from "../utils/api";
 import CuratedLooksGallery from "../components/CuratedLooksGallery";
 import DiscountPage from "../components/DiscountPage";
-import AnnouncementBar from "../components/AnnouncementBar";
+import CouponCarousel from "../components/CouponCarousel";
+import AlternatingShowcase from "../components/AlternatingShowcase";
 import { normalizeProduct } from "../utils/product";
 import { isStorefrontPreview } from "../utils/preview";
 import PageSeo from "../components/seo/PageSeo";
@@ -43,7 +44,7 @@ const Customerdashboard = () => {
   const { branding } = useBranding();
   const storedRole = localStorage.getItem("role");
 
-  const { cartItems, addToCart, fetchCart } = useCart();
+  const { cartItems, addToCart, fetchCart, openCartDrawer } = useCart();
   const { user, logout } = useAuth();
   const role = user.role?.toLowerCase() || storedRole?.toLowerCase() || null;
 
@@ -180,18 +181,16 @@ const Customerdashboard = () => {
         (item: { productId: string }) => item.productId === product.id,
       );
       if (isAlreadyInCart) {
-        toast("Already in cart. Redirecting...", { duration: 1500 });
-        setTimeout(() => navigate("/cart"), 1500);
+        toast("Already in your cart", { duration: 1500 });
+        openCartDrawer();
         return;
       }
       await addToCart(product.id);
-      toast.success(`${product.name} added! Redirecting...`, {
+      toast.success(`${product.name} added to cart!`, {
         duration: 1500,
       });
-      setTimeout(() => {
-        fetchCart();
-        navigate("/cart");
-      }, 1500);
+      fetchCart();
+      openCartDrawer();
     } catch (e) {
       const err = e as any;
       console.error("Error adding to cart:", err);
@@ -243,6 +242,8 @@ const Customerdashboard = () => {
     }
   }, [isHeroReady]);
 
+  const pendingAnchorRef = useRef<string | null>(null);
+
   // Homepage Manager's preview iframe (StorefrontPreviewFrame.tsx) posts a scroll-to
   // request per tab so the admin sees the section they're editing without hunting for
   // it on the full page. No-op outside the preview iframe — nothing else sends this.
@@ -250,12 +251,28 @@ const Customerdashboard = () => {
     const handler = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
       if (event.data?.type === "STORRA_SCROLL_TO" && typeof event.data.anchor === "string") {
-        document.getElementById(event.data.anchor)?.scrollIntoView({ behavior: "smooth", block: "start" });
+        const anchor = event.data.anchor;
+        const el = document.getElementById(anchor);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "start" });
+        } else {
+          pendingAnchorRef.current = anchor;
+        }
       }
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
   }, []);
+
+  useEffect(() => {
+    if (showContent && pendingAnchorRef.current) {
+      const anchor = pendingAnchorRef.current;
+      const timer = setTimeout(() => {
+        document.getElementById(anchor)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [showContent]);
 
   return (
     <div className="bg-white">
@@ -270,29 +287,31 @@ const Customerdashboard = () => {
       </div>
       {showContent && (
         <>
-          <div id="banner">
-            <BannerCarousel />
-          </div>
-          <div id="announcement">
-            <AnnouncementBar />
+          <div id="coupons">
+            <CouponCarousel />
           </div>
           <div id="category">
             <CategorySection />
           </div>
-          <div id="discount">
-            <DiscountPage />
+          <div id="banner">
+            <BannerCarousel />
           </div>
           <div id="carousel">
             <CuratedLooksGallery />
           </div>
-          <div id="featured">
-            <FeaturedProducts
-              featuredProducts={featuredProducts}
-              productsLoading={productsLoading}
-              productsError={productsError}
-              sectionTitle={featuredSection.title}
-              sectionSubtitle={featuredSection.subtitle || undefined}
-            />
+          <div id="discount">
+            <DiscountPage />
+          </div>
+          <div id="featured" className="w-full">
+            <div id="pre-footer" className="w-full">
+              <AlternatingShowcase
+                handpickedProducts={featuredProducts}
+                productsLoading={productsLoading}
+                productsError={productsError}
+                sectionTitle={featuredSection.title}
+                sectionSubtitle={featuredSection.subtitle || undefined}
+              />
+            </div>
           </div>
           <div id="footer">
             <FooterSection />

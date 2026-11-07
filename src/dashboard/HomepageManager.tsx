@@ -10,6 +10,7 @@ import {
   TrashIcon,
   ArrowsUpDownIcon,
   PhotoIcon,
+  CheckIcon,
   CheckCircleIcon,
   XCircleIcon,
   StarIcon,
@@ -19,42 +20,237 @@ import {
   PhotoIcon as HeroPhotoIcon,
   Squares2X2Icon,
   SparklesIcon,
-  Bars3Icon,
-  ChevronUpIcon,
   ChevronDownIcon,
   SwatchIcon,
   ComputerDesktopIcon,
   DevicePhoneMobileIcon,
   XMarkIcon,
+  ArrowPathIcon,
 } from "@heroicons/react/24/outline";
 import StorefrontPreviewFrame from "./components/StorefrontPreviewFrame";
 import { THEMES, DEFAULT_THEME_ID } from "../utils/themes";
 import { OCCASION_PRESETS, type OccasionPreset } from "../utils/occasionPresets";
+import { FESTIVE_ANNOUNCEMENTS } from "../components/AnnouncementBar";
 
-// Editable copy shown in the Occasions tab's confirm dialog — seeded from the preset's
-// own defaults (openPresetConfirm in HomepageManager) but freely editable before Apply.
-interface PresetCustomization {
-  heroTitle: string;
-  heroSubtitle: string;
-  heroCtaText: string;
-  heroAccentText: string;
-  heroBadgeText: string;
-  announcementText: string;
-  footerTagline: string;
-}
 import { StarIcon as StarSolidIcon } from "@heroicons/react/24/solid";
+import { formatDiscountBadge } from "../utils/product";
+import {
+  PreFooterConfig,
+  PreFooterBannerItem,
+  DEFAULT_PRE_FOOTER_CONFIG,
+} from "../components/PreFooterBannerSlider";
+import {
+  FeaturedCategorySlot,
+  FeaturedCategoriesConfig,
+  DEFAULT_FEATURED_CATEGORIES_CONFIG,
+} from "../components/AlternatingShowcase";
 
-// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// -¢------¬-¢------¬-¢------¬ Custom UI Dropdown Select Component -¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬
+interface CustomDropdownOption<T extends string | number> {
+  value: T;
+  label: string;
+  badge?: string;
+}
+
+interface CustomDropdownSelectProps<T extends string | number> {
+  value: T;
+  onChange: (value: T) => void;
+  options: CustomDropdownOption<T>[];
+  placeholder?: string;
+  searchable?: boolean;
+  className?: string;
+}
+
+function CustomDropdownSelect<T extends string | number>({
+  value,
+  onChange,
+  options,
+  placeholder = "Select...",
+  searchable = false,
+  className = "",
+}: CustomDropdownSelectProps<T>) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    if (isOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      if (searchable) {
+        setTimeout(() => searchInputRef.current?.focus(), 50);
+      }
+    } else {
+      setSearch("");
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isOpen, searchable]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isOpen) {
+        setIsOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen]);
+
+  const selectedOption = options.find((opt) => String(opt.value) === String(value));
+
+  const filteredOptions = searchable && search.trim()
+    ? options.filter((opt) => opt.label.toLowerCase().includes(search.toLowerCase()))
+    : options;
+
+  return (
+    <div ref={containerRef} className={`relative w-full ${isOpen ? "z-40" : "z-10"} ${className}`}>
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className={`w-full flex items-center justify-between px-3.5 py-2.5 bg-slate-50 border rounded-xl text-xs sm:text-sm font-medium transition-all text-left cursor-pointer ${
+          isOpen
+            ? "bg-white border-indigo-500 ring-2 ring-indigo-500/20 shadow-sm"
+            : "border-gray-200 hover:bg-white hover:border-gray-300 text-gray-900"
+        }`}
+      >
+        <span
+          className={`truncate ${
+            selectedOption && selectedOption.value !== ""
+              ? "text-gray-900 font-medium"
+              : "text-gray-400 font-normal"
+          }`}
+        >
+          {selectedOption && selectedOption.value !== "" ? selectedOption.label : placeholder}
+        </span>
+        <div className="flex items-center gap-1.5 ml-2 shrink-0">
+          {selectedOption?.badge && (
+            <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">
+              {selectedOption.badge}
+            </span>
+          )}
+          <ChevronDownIcon
+            className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${
+              isOpen ? "rotate-180 text-indigo-600" : ""
+            }`}
+          />
+        </div>
+      </button>
+
+      {isOpen && (
+        <div className="absolute z-50 left-0 right-0 mt-1.5 bg-white rounded-xl shadow-xl border border-gray-100 py-1.5 max-h-64 overflow-hidden flex flex-col animate-in fade-in-0 zoom-in-95 duration-100">
+          {searchable && options.length > 5 && (
+            <div className="p-2 border-b border-gray-100 bg-white shrink-0">
+              <div className="relative">
+                <MagnifyingGlassIcon className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search categories..."
+                  className="w-full pl-8 pr-2.5 py-1.5 bg-slate-50 border border-gray-200 rounded-lg text-xs font-medium text-gray-900 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:bg-white"
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="overflow-y-auto max-h-52 p-1 space-y-0.5 scrollbar-thin">
+            {filteredOptions.length === 0 ? (
+              <div className="py-3 px-3 text-center text-xs text-gray-400 font-light">
+                No matching options found
+              </div>
+            ) : (
+              filteredOptions.map((opt) => {
+                const isSelected = String(opt.value) === String(value);
+                return (
+                  <button
+                    key={String(opt.value)}
+                    type="button"
+                    onClick={() => {
+                      onChange(opt.value);
+                      setIsOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between px-3 py-2 text-xs sm:text-sm rounded-lg transition-colors text-left cursor-pointer ${
+                      isSelected
+                        ? "bg-indigo-50 text-indigo-700 font-semibold"
+                        : "text-gray-700 hover:bg-slate-50 hover:text-gray-900 font-medium"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <span className="truncate">{opt.label}</span>
+                      {opt.badge && (
+                        <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded-full bg-indigo-100 text-indigo-700 shrink-0">
+                          {opt.badge}
+                        </span>
+                      )}
+                    </div>
+                    {isSelected && <CheckIcon className="w-4 h-4 text-indigo-600 shrink-0 ml-2" />}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// -¢------¬-¢------¬-¢------¬ Types -¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬
 
 type BannerType = "DISCOUNT_PANEL" | "CAROUSEL_ITEM" | "PROMO_BANNER";
-type Tab = BannerType | "FEATURED" | "ANNOUNCEMENT" | "HERO" | "HEADER" | "FOOTER" | "NAVIGATION" | "THEME" | "OCCASIONS";
+type Tab =
+  | BannerType
+  | "FEATURED"
+  | "ANNOUNCEMENT"
+  | "HERO"
+  | "HEADER"
+  | "FOOTER"
+  | "THEME"
+  | "PRE_FOOTER"
+  | "OCCASIONS"
+  | "CATEGORIES";
+
+interface NavbarTemplateData {
+  bgColor?: string;
+  textColor?: string;
+}
 
 interface NavbarConfig {
   activeTemplate: 1 | 2 | 3 | 4 | 5 | 6;
+  templates?: Record<string, NavbarTemplateData>;
 }
 
 const DEFAULT_NAVBAR: NavbarConfig = {
   activeTemplate: 1,
+  templates: {
+    "1": {},
+    "2": {},
+    "3": {},
+    "4": {},
+    "5": {},
+    "6": {},
+  },
+};
+
+const NAVBAR_DEFAULT_COLORS: Record<
+  string,
+  { bg: string; text: string; bgLabel: string; textLabel: string }
+> = {
+  "1": { bg: "#0a0a0a", text: "#ffffff", bgLabel: "Obsidian Noir (#0a0a0a)", textLabel: "White (#ffffff)" },
+  "2": { bg: "#fcfbf9", text: "#1c1917", bgLabel: "Off-white Editorial (#fcfbf9)", textLabel: "Stone-900 (#1c1917)" },
+  "3": { bg: "#0f172a", text: "#ffffff", bgLabel: "Indigo Aurora Gradient", textLabel: "White (#ffffff)" },
+  "4": { bg: "#ffffff", text: "#111827", bgLabel: "Pure White (#ffffff)", textLabel: "Gray-900 (#111827)" },
+  "5": { bg: "#ffffff", text: "#111827", bgLabel: "Pure White (#ffffff)", textLabel: "Gray-900 (#111827)" },
+  "6": { bg: "#ffffff", text: "#111827", bgLabel: "Pure White (#ffffff)", textLabel: "Gray-900 (#111827)" },
 };
 
 const NAVBAR_TEMPLATE_LABELS: Record<string, { name: string; desc: string; tag: string }> = {
@@ -79,8 +275,8 @@ const NAVBAR_TEMPLATE_LABELS: Record<string, { name: string; desc: string; tag: 
     tag: "Pairs with Footer 4",
   },
   "5": {
-    name: "Festive Accent Band",
-    desc: "Full theme-primary brand header with high-contrast white active tabs and festive energetic energy.",
+    name: "Sleek Boutique Slim",
+    desc: "Ultra-slim luxury boutique single-row header with uppercase typography and minimalist action icons.",
     tag: "Pairs with Footer 5",
   },
   "6": {
@@ -90,18 +286,13 @@ const NAVBAR_TEMPLATE_LABELS: Record<string, { name: string; desc: string; tag: 
   },
 };
 
-interface NavCategory {
-  id: string;
-  name: string;
-  showInNav: boolean;
-  navOrder: number;
-}
 
 interface HomeBanner {
   id: string;
   type: BannerType;
   title: string;
   image: string;
+  link?: string | null;
   discount: string | null;
   description: string | null;
   sortOrder: number;
@@ -133,12 +324,15 @@ interface HeroTemplateData {
   bgImage?: string;
   accentText?: string;
   images?: string[];
+  imageTitles?: string[];
+  imageLinks?: string[];
+  imageSubtitles?: string[];
   highlightText?: string;
   badgeText?: string;
 }
 
 interface HeroConfig {
-  activeTemplate: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+  activeTemplate: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
   templates: Record<string, HeroTemplateData>;
 }
 
@@ -154,6 +348,8 @@ interface FooterLinkColumn {
 
 interface FooterTemplateData {
   tagline: string;
+  showCompanyName?: boolean;
+  blendLogoWithBg?: boolean;
   newsletterTitle?: string;
   instagramLink?: string;
   facebookLink?: string;
@@ -162,6 +358,8 @@ interface FooterTemplateData {
   /** Templates 1/2/3/5/6's "Shop / Company / Support"-style link grid — always exactly
    * 3 columns to match those templates' fixed layouts. Template 4 has no link grid. */
   linkColumns?: FooterLinkColumn[];
+  bgColor?: string;
+  textColor?: string;
 }
 
 interface FooterConfig {
@@ -171,11 +369,11 @@ interface FooterConfig {
 
 const DEFAULT_LINK_COLUMNS: FooterLinkColumn[] = [
   { heading: "Shop", links: [{ label: "New Arrivals", url: "/products" }, { label: "Best Sellers", url: "/products" }] },
-  { heading: "Company", links: [{ label: "Our Story", url: "/about" }, { label: "Terms & Conditions", url: "/terms" }] },
+  { heading: "Company", links: [{ label: "Our Story", url: "/about" }, { label: "Terms & Conditions", url: "/terms" }, { label: "Privacy Policy", url: "/privacy" }] },
   { heading: "Support", links: [{ label: "Help Center", url: "/help" }, { label: "Contact Us", url: "/contact" }] },
 ];
 
-// â”€â”€â”€ Defaults â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬ Defaults ---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬
 
 const DEFAULT_HERO: HeroConfig = {
   activeTemplate: 1,
@@ -189,10 +387,11 @@ const DEFAULT_HERO: HeroConfig = {
     },
     "2": {
       title: "New Arrivals Just Dropped",
-      subtitle: "Discover our latest curated pieces.",
-      ctaText: "Explore Now",
+      subtitle: "Discover our latest curated pieces made for the modern era.",
+      ctaText: "Explore Collection",
       ctaLink: "/products",
-      bgImage: "",
+      accentText: "SS26 Collection",
+      bgImage: "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&q=85&w=2000",
     },
     "3": {
       title: "Elegance Redefined",
@@ -219,24 +418,41 @@ const DEFAULT_HERO: HeroConfig = {
       ctaLink: "/products",
       accentText: "New Season / Avant-Garde Collection",
       images: [
-        "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&q=80&w=600",
-        "https://images.unsplash.com/photo-1519457431-44ccd64a579b?auto=format&fit=crop&q=80&w=400",
-        "https://images.unsplash.com/photo-1539109136881-3be0616acf4b?auto=format&fit=crop&q=80&w=600",
-        "https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&q=80&w=600",
-        "https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?auto=format&fit=crop&q=80&w=600",
-        "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=600",
-        "https://images.unsplash.com/photo-1501196354995-cbb51c65aaea?auto=format&fit=crop&q=80&w=400",
+        "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&q=80&w=800",
+        "https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&q=80&w=800",
+        "https://images.unsplash.com/photo-1539109136881-3be0616acf4b?auto=format&fit=crop&q=80&w=800",
+        "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&q=80&w=800",
+        "https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?auto=format&fit=crop&q=80&w=800",
+        "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=800",
+        "https://images.unsplash.com/photo-1501196354995-cbb51c65aaea?auto=format&fit=crop&q=80&w=800",
       ],
     },
     "6": {
-      title: "Big Style. Bigger Savings.",
-      subtitle: "Our biggest collection drop of the season, at prices you'll love.",
-      ctaText: "Shop The Sale",
+      title: "The SS26 Campaign",
+      subtitle: "Discover our latest curated edits and signature pieces.",
+      ctaText: "Explore All",
       ctaLink: "/products",
-      accentText: "Limited Time",
-      highlightText: "",
-      badgeText: "50%\nOFF SELECTED",
-      bgImage: "",
+      accentText: "New Campaign",
+      images: [
+        "https://images.unsplash.com/photo-1509631179647-0177331693ae?auto=format&fit=crop&q=80&w=1000",
+        "https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&q=80&w=1000",
+        "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&q=80&w=1000",
+      ],
+      imageTitles: [
+        "Shop Chains",
+        "Shop Rings",
+        "SS26 Campaign: Out Now",
+      ],
+      imageLinks: [
+        "/products",
+        "/products",
+        "/products",
+      ],
+      imageSubtitles: [
+        "",
+        "",
+        "SOURCE MATERIAL",
+      ],
     },
     "7": {
       title: "Simplicity Is The Ultimate Sophistication",
@@ -246,20 +462,42 @@ const DEFAULT_HERO: HeroConfig = {
       accentText: "The Collection",
     },
     "8": {
-      title: "Everything Must Go",
-      subtitle: "Our biggest markdowns of the year — while stock lasts.",
-      ctaText: "Shop The Sale",
+      title: "Curious What Else We've Created?",
+      subtitle:
+        "Explore our latest collection of handcrafted fashion, signature jewelry, and artisanal creations made for the modern aesthetic.",
+      ctaText: "Explore Projects",
       ctaLink: "/products",
-      accentText: "Sale Ends Soon",
-      badgeText: "70%\nOFF",
+      accentText: "Behind the Designs",
+      images: [
+        "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&q=80&w=800",
+        "https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&q=80&w=800",
+        "https://images.unsplash.com/photo-1539109136881-3be0616acf4b?auto=format&fit=crop&q=80&w=800",
+        "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&q=80&w=800",
+        "https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?auto=format&fit=crop&q=80&w=800",
+        "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=800",
+        "https://images.unsplash.com/photo-1501196354995-cbb51c65aaea?auto=format&fit=crop&q=80&w=800",
+      ],
     },
     "9": {
-      title: "The New Season Edit",
-      subtitle: "Fresh arrivals, curated for right now.",
-      ctaText: "Shop Now",
+      title: "",
+      subtitle: "",
+      ctaText: "",
+      ctaLink: "",
+      images: [
+        "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?auto=format&fit=crop&q=85&w=1920",
+        "https://images.unsplash.com/photo-1469334031218-e382a71b716b?auto=format&fit=crop&q=85&w=1920",
+        "https://images.unsplash.com/photo-1445205170230-053b83016050?auto=format&fit=crop&q=85&w=1920",
+        "https://images.unsplash.com/photo-1441984904996-e0b6ba687e04?auto=format&fit=crop&q=85&w=1920",
+        "https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&q=85&w=1920",
+      ],
+    },
+    "10": {
+      title: "Festive",
+      highlightText: "Sale",
+      subtitle: "Flat 50% OFF +\nExtra Rs.1000/- OFF",
+      ctaText: "Explore More",
       ctaLink: "/products",
-      accentText: "New In",
-      bgImage: "",
+      bgImage: "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&q=85&w=2400",
     },
   },
 };
@@ -275,6 +513,7 @@ const DEFAULT_FOOTER: FooterConfig = {
       twitterLink: "https://twitter.com",
       mailLink: "info@yourbrand.com",
       linkColumns: DEFAULT_LINK_COLUMNS,
+      blendLogoWithBg: false,
     },
     "2": {
       tagline: "Crafting timeless Indian fashion for the modern world.",
@@ -283,6 +522,7 @@ const DEFAULT_FOOTER: FooterConfig = {
       twitterLink: "https://twitter.com",
       mailLink: "info@yourbrand.com",
       linkColumns: DEFAULT_LINK_COLUMNS,
+      blendLogoWithBg: true,
     },
     "3": {
       tagline: "From our looms to your wardrobe -- authentically Indian.",
@@ -292,6 +532,7 @@ const DEFAULT_FOOTER: FooterConfig = {
       twitterLink: "https://twitter.com",
       mailLink: "info@yourbrand.com",
       linkColumns: DEFAULT_LINK_COLUMNS,
+      blendLogoWithBg: false,
     },
     "4": {
       tagline: "Thank you for being part of our story.",
@@ -299,6 +540,7 @@ const DEFAULT_FOOTER: FooterConfig = {
       facebookLink: "https://facebook.com",
       twitterLink: "https://twitter.com",
       mailLink: "info@yourbrand.com",
+      blendLogoWithBg: true,
     },
     "5": {
       tagline: "Celebrate the season with us.",
@@ -307,6 +549,7 @@ const DEFAULT_FOOTER: FooterConfig = {
       twitterLink: "https://twitter.com",
       mailLink: "info@yourbrand.com",
       linkColumns: DEFAULT_LINK_COLUMNS,
+      blendLogoWithBg: false,
     },
     "6": {
       tagline: "Designed with care, worn with pride.",
@@ -315,6 +558,7 @@ const DEFAULT_FOOTER: FooterConfig = {
       twitterLink: "https://twitter.com",
       mailLink: "info@yourbrand.com",
       linkColumns: DEFAULT_LINK_COLUMNS,
+      blendLogoWithBg: true,
     },
   },
 };
@@ -325,6 +569,7 @@ const DEFAULT_ANNOUNCEMENT_TEXT =
 const emptyForm = {
   type: "DISCOUNT_PANEL" as BannerType,
   title: "",
+  link: "",
   discount: "",
   description: "",
   sortOrder: "0",
@@ -350,23 +595,27 @@ const HERO_TEMPLATE_LABELS: Record<string, { name: string; desc: string }> = {
   },
   "5": {
     name: "Fashion Collage Gallery",
-    desc: "Centered headline with a multi-colored 5-column image collage layout below",
+    desc: "Centered headline with an elegant 5-column editorial image collage layout below",
   },
   "6": {
-    name: "Diagonal Split",
-    desc: "Bold two-tone panel with a diagonal photo seam and a floating badge — great for sales & festive pushes",
+    name: "Editorial Triptych",
+    desc: "3-image high-fashion split banner with custom editable headline and link for each image",
   },
   "7": {
     name: "Minimal Statement",
     desc: "Oversized type-only hero, no photography needed — safest choice if you don't have hero imagery ready",
   },
   "8": {
-    name: "Sale Spotlight",
-    desc: "Giant discount numeral as the visual anchor — built for sale-event pushes",
+    name: "3D Curved Gallery Arc",
+    desc: "Panoramic 3D curved arc ribbon of 7 images with centered headline & subtitle",
   },
   "9": {
-    name: "Full-bleed Frosted Bar",
-    desc: "Full-width photo with a frosted glass info bar anchored to the bottom edge",
+    name: "5-Banner Auto Carousel",
+    desc: "Widescreen 5-banner auto carousel with referral aspect ratio (2.65:1 • 1920 × 720 px), curved edges, frosted arrows, counter pill & indicator dots",
+  },
+  "10": {
+    name: "Festive Editorial Banner",
+    desc: "Luxury banner with high-contrast serif headline, cursive script accent, discount offer text, and outline CTA button",
   },
 };
 
@@ -397,6 +646,18 @@ const FOOTER_TEMPLATE_LABELS: Record<string, { name: string; desc: string }> = {
   },
 };
 
+const FOOTER_DEFAULT_COLORS: Record<
+  string,
+  { bg: string; text: string; bgLabel: string; textLabel: string }
+> = {
+  "1": { bg: "#0a0a0a", text: "#ffffff", bgLabel: "Dark Charcoal (#0a0a0a)", textLabel: "White (#ffffff)" },
+  "2": { bg: "#f9fafb", text: "#1f2937", bgLabel: "Off-white (#f9fafb)", textLabel: "Dark Slate (#1f2937)" },
+  "3": { bg: "#0f172a", text: "#ffffff", bgLabel: "Indigo Navy Gradient", textLabel: "White (#ffffff)" },
+  "4": { bg: "#ffffff", text: "#1f2937", bgLabel: "Pure White (#ffffff)", textLabel: "Dark Slate (#1f2937)" },
+  "5": { bg: "#4f46e5", text: "#ffffff", bgLabel: "Theme Primary", textLabel: "Theme Contrast Ink" },
+  "6": { bg: "#ffffff", text: "#1f2937", bgLabel: "Pure White (#ffffff)", textLabel: "Dark Slate (#1f2937)" },
+};
+
 // Announcement Bar / Banner Carousel / Discount Panels / Featured Collections have no
 // per-template content (see saveSectionTemplate above) — only Template 1 exists so far,
 // more land here the same way Hero/Footer's label maps grew.
@@ -406,26 +667,60 @@ const ANNOUNCEMENT_TEMPLATE_LABELS: Record<string, { name: string; desc: string 
   "3": { name: "Dismissible Pill", desc: "A floating rounded pill the customer can close for the session -- shows only the first message" },
   "4": { name: "Icon Colored Band", desc: "Full-width band in your accent color with a megaphone icon, cross-fading between messages" },
 };
-const CAROUSEL_TEMPLATE_LABELS: Record<string, { name: string; desc: string }> = {
-  "1": { name: "Auto-scroll Row", desc: "Images glide horizontally, pauses on hover" },
-  "2": { name: "Static Grid", desc: "Calm responsive grid with title/discount text overlays" },
-  "3": { name: "Full-bleed Slider", desc: "One large banner at a time, auto-advancing with dots and arrows" },
-  "4": { name: "Split Showcase", desc: "Two large side-by-side cards — editorial feel for just a couple of promotions" },
+const CAROUSEL_TEMPLATE_LABELS: Record<string, { name: string; desc: string; ratio?: string; sizeHint?: string }> = {
+  "1": {
+    name: "Auto-scroll Row",
+    desc: "Images glide horizontally, pauses on hover",
+    ratio: "16:9",
+    sizeHint: "1920 × 1080 px (or 1280 × 720 px)",
+  },
+  "2": {
+    name: "Auto Multi-Carousel",
+    desc: "Single-line auto carousel with side-by-side cards, peek effect & controls",
+    ratio: "2:1",
+    sizeHint: "1200 × 600 px (or 1600 × 800 px)",
+  },
+  "3": {
+    name: "Full-bleed Slider",
+    desc: "One large banner at a time, auto-advancing with dots and arrows",
+    ratio: "2.1:1 / 21:9",
+    sizeHint: "1920 × 914 px (or 2000 × 950 px)",
+  },
+  "4": {
+    name: "Split Showcase",
+    desc: "Single-line 2-split cards with left & right navigation arrows",
+    ratio: "2.2:1 (or 16:9)",
+    sizeHint: "1600 × 750 px (or 1200 × 550 px)",
+  },
 };
-const DISCOUNT_TEMPLATE_LABELS: Record<string, { name: string; desc: string }> = {
-  "1": { name: "Split Grid", desc: "Two large left panels, stacked panels on the right" },
-  "2": { name: "Masonry", desc: "Varied-height columns for a more organic, less rigid feel" },
-  "3": { name: "Ticker Strip", desc: "Single horizontal row of compact cards — good for many small promotions" },
-  "4": { name: "Badge Grid", desc: "Uniform square cards with a prominent discount badge — clean catalog style" },
+const DISCOUNT_TEMPLATE_LABELS: Record<string, { name: string; desc: string; ratio?: string; sizeHint?: string }> = {
+  "1": {
+    name: "Split Grid",
+    desc: "Side-by-side full banner images in one line with left & right navigation arrows",
+    ratio: "2:1",
+    sizeHint: "1600 × 800 px (or 1200 × 600 px)",
+  },
+  "2": {
+    name: "Triple Showcase",
+    desc: "3 elegant wide banners in one horizontal line with smooth sliding arrows",
+    ratio: "16:9",
+    sizeHint: "1200 × 675 px (or 960 × 540 px)",
+  },
+  "3": {
+    name: "Cinematic Panorama",
+    desc: "Single full-width wide editorial banner with slider navigation",
+    ratio: "3.2:1",
+    sizeHint: "1920 × 600 px (or 1600 × 500 px)",
+  },
 };
 const FEATURED_TEMPLATE_LABELS: Record<string, { name: string; desc: string }> = {
   "1": { name: "Horizontal Scroll", desc: "Card row with left/right scroll arrows" },
   "2": { name: "Static Grid", desc: "Every product visible at once in a responsive grid — no scrolling needed" },
-  "3": { name: "Spotlight Carousel", desc: "One large product at a time with a thumbnail rail to jump between them" },
+  "3": { name: "Spotlight Carousel", desc: "Full portrait hero showcase with an interactive thumbnail strip" },
   "4": { name: "Editorial List", desc: "Magazine-style stacked rows with large images and more room for product info" },
 };
 
-// â”€â”€â”€ Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬ Component ---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬
 
 // Compact picker for the 4 presentation-only sections — a smaller cousin of the Hero/
 // Footer template grid above (no per-template "Edit content" step, since there's no
@@ -436,12 +731,12 @@ const SectionTemplatePicker = ({
   onSelect,
   disabled,
 }: {
-  labels: Record<string, { name: string; desc: string }>;
+  labels: Record<string, { name: string; desc: string; ratio?: string; sizeHint?: string }>;
   activeTemplate: number;
   onSelect: (n: number) => void;
   disabled?: boolean;
 }) => (
-  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mb-6">
+  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-6">
     {Object.entries(labels).map(([key, label]) => {
       const isActive = String(activeTemplate) === key;
       return (
@@ -450,21 +745,35 @@ const SectionTemplatePicker = ({
           type="button"
           disabled={disabled}
           onClick={() => onSelect(Number(key))}
-          className={`text-left border-2 rounded-xl p-4 transition-all disabled:opacity-60 disabled:cursor-not-allowed ${
+          className={`text-left border-2 rounded-xl p-4 transition-all disabled:opacity-60 disabled:cursor-not-allowed flex flex-col justify-between ${
             isActive
               ? "border-indigo-500 bg-indigo-50/60 shadow-sm shadow-indigo-100"
               : "border-gray-200 hover:border-indigo-300"
           }`}
         >
-          <div className="flex items-center justify-between mb-1">
-            <p className="text-sm font-bold text-gray-900">{label.name}</p>
-            {isActive && (
-              <span className="text-[10px] font-bold uppercase tracking-wide text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-full">
-                Active
-              </span>
-            )}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-sm font-bold text-gray-900">{label.name}</p>
+              {isActive && (
+                <span className="text-[10px] font-bold uppercase tracking-wide text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-full">
+                  Active
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-gray-500 leading-snug">{label.desc}</p>
           </div>
-          <p className="text-xs text-gray-500 leading-snug">{label.desc}</p>
+          {label.ratio && (
+            <div className="mt-3 pt-2 border-t border-gray-200 flex flex-wrap items-center justify-between gap-1 text-[11px]">
+              <span className="font-semibold text-indigo-700 bg-indigo-100/70 px-1.5 py-0.5 rounded text-[10px]">
+                {label.ratio}
+              </span>
+              {label.sizeHint && (
+                <span className="text-gray-600 text-[10px] font-mono font-medium whitespace-normal">
+                  {label.sizeHint}
+                </span>
+              )}
+            </div>
+          )}
         </button>
       );
     })}
@@ -479,15 +788,11 @@ export default function HomepageManager() {
   // interactive regardless of what the logged-in staff member actually had, so clicking
   // one just produced a raw {"message":"You do not have permission..."} network 403 with
   // no warning. Each handler below now checks up front and shows a clear toast instead.
-  // Note: the Navigation Menu tab's save (saveNavSettings) actually hits
-  // /category/nav-order, gated by CATEGORY_EDIT (not a BANNER_* permission) — it rides
-  // along in this "Homepage Manager" feature but is a genuinely different permission.
   const { hasPermission } = useStaffPermissions();
   const { user } = useAuth();
   const canBannerAdd = hasPermission("BANNER_ADD");
   const canBannerEdit = hasPermission("BANNER_EDIT");
   const canBannerDelete = hasPermission("BANNER_DELETE");
-  const canCategoryEdit = hasPermission("CATEGORY_EDIT");
   const NO_PERMISSION_MSG = "You don't have permission to make changes here — ask an admin to grant it.";
   // The announcement-bar endpoints (/admin/company-settings, /admin/announcement-toggle)
   // are role-gated ADMIN-only on the backend (see admin.routes.ts) — not staff-permission
@@ -536,9 +841,21 @@ export default function HomepageManager() {
   );
 
   // Navbar config state
-  const [navbarConfig, setNavbarConfig] =
-    useState<NavbarConfig>(DEFAULT_NAVBAR);
+  const [navbarConfig, setNavbarConfig] = useState<NavbarConfig>(() => {
+    try {
+      const cached = localStorage.getItem("crm_navbar_cache");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && typeof parsed.activeTemplate === "number") {
+          return { ...DEFAULT_NAVBAR, ...parsed };
+        }
+      }
+    } catch {}
+    return DEFAULT_NAVBAR;
+  });
   const [savingNavbar, setSavingNavbar] = useState(false);
+  const [editingNavbarTemplate, setEditingNavbarTemplate] = useState<string | null>(null);
+  const [navbarForm, setNavbarForm] = useState<NavbarTemplateData>({});
 
   // Footer config state
   const [footerConfig, setFooterConfig] =
@@ -551,11 +868,31 @@ export default function HomepageManager() {
     DEFAULT_FOOTER.templates["1"],
   );
 
+  // Pre-footer config state
+  const [preFooterConfig, setPreFooterConfig] =
+    useState<PreFooterConfig>(DEFAULT_PRE_FOOTER_CONFIG);
+  const [savingPreFooter, setSavingPreFooter] = useState(false);
+  const [uploadingPreFooterSlot, setUploadingPreFooterSlot] = useState<number | null>(null);
+
+  // Additional category showcases state (Featured Sections 2-5)
+  const [featuredCatConfig, setFeaturedCatConfig] =
+    useState<FeaturedCategoriesConfig>(DEFAULT_FEATURED_CATEGORIES_CONFIG);
+  const [savingFeaturedCategories, setSavingFeaturedCategories] = useState(false);
+  const [allCategoriesList, setAllCategoriesList] = useState<{ id: string; name: string }[]>([]);
+
   // Storefront theme state — themeId is the saved/live value; draftThemeId is what's
   // currently selected in the picker but not yet saved (drives the instant preview via
   // StorefrontPreviewFrame's previewThemeId prop, independent of what's actually live).
   const [themeId, setThemeId] = useState<string>(DEFAULT_THEME_ID);
   const [draftThemeId, setDraftThemeId] = useState<string>(DEFAULT_THEME_ID);
+  const [customButtonBg, setCustomButtonBg] = useState<string>("");
+  const [customButtonText, setCustomButtonText] = useState<string>("");
+  const [draftButtonBg, setDraftButtonBg] = useState<string>("");
+  const [draftButtonText, setDraftButtonText] = useState<string>("");
+  // Category card shape state ('square' | 'circle')
+  const [categoryShape, setCategoryShape] = useState<"square" | "circle">("square");
+  const [draftCategoryShape, setDraftCategoryShape] = useState<"square" | "circle">("square");
+  const [savingCategoryShape, setSavingCategoryShape] = useState(false);
 
   // Presentation-only template choices for the 4 sections that have no per-template
   // content of their own (see companySettings.controller.ts's SECTION_TEMPLATE_KEYS) —
@@ -567,6 +904,11 @@ export default function HomepageManager() {
   const [discountTemplate, setDiscountTemplate] = useState(1);
   const [featuredTemplate, setFeaturedTemplate] = useState(1);
   const [savingTheme, setSavingTheme] = useState(false);
+
+  // Occasion presets state
+  const [activeOccasionId, setActiveOccasionId] = useState<string | null>(null);
+  const [applyingPreset, setApplyingPreset] = useState(false);
+  const [disablingOccasion, setDisablingOccasion] = useState(false);
 
   // Bumped after every successful save that changes real storefront content — the
   // single shared preview's src is otherwise fixed for its whole mounted lifetime (see
@@ -582,14 +924,6 @@ export default function HomepageManager() {
   // iframe below is untouched either way).
   const [desktopPreviewOpen, setDesktopPreviewOpen] = useState(false);
 
-  // Navigation menu state — which top-level categories show in the site-wide
-  // CategoryMegaMenu, and in what order. Subcategories always ride along with
-  // their parent automatically (see CategoryMegaMenu.tsx), so there's nothing to
-  // manage for them here.
-  const [navCategories, setNavCategories] = useState<NavCategory[]>([]);
-  const [navLoading, setNavLoading] = useState(false);
-  const [navSaving, setNavSaving] = useState(false);
-  const [navDirty, setNavDirty] = useState(false);
 
   // Featured products state
   const [featuredProducts, setFeaturedProducts] = useState<FeaturedProduct[]>(
@@ -614,17 +948,10 @@ export default function HomepageManager() {
   const [sectionForm, setSectionForm] = useState({ title: "", subtitle: "" });
   const [savingSection, setSavingSection] = useState(false);
 
-  // Occasion presets (see utils/occasionPresets.ts / applyOccasionPreset below) —
-  // declared up here since useBodyScrollLock right below reads confirmingPreset.
-  const [confirmingPreset, setConfirmingPreset] = useState<OccasionPreset | null>(null);
-  const [presetCustomization, setPresetCustomization] = useState<PresetCustomization | null>(null);
-  const [applyingPreset, setApplyingPreset] = useState(false);
-  const [disablingOccasion, setDisablingOccasion] = useState(false);
-
   // Banner modal
   const [showModal, setShowModal] = useState(false);
   const [bannerToDelete, setBannerToDelete] = useState<HomeBanner | null>(null);
-  useBodyScrollLock(showModal || !!confirmingPreset || desktopPreviewOpen || !!bannerToDelete);
+  useBodyScrollLock(showModal || desktopPreviewOpen || !!bannerToDelete);
   const [editBanner, setEditBanner] = useState<HomeBanner | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -638,7 +965,7 @@ export default function HomepageManager() {
   );
   const [uploadingBgImage, setUploadingBgImage] = useState(false);
 
-  // â”€â”€ Fetch â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬ Fetch ---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬
 
   const fetchBanners = useCallback(async () => {
     try {
@@ -677,7 +1004,7 @@ export default function HomepageManager() {
       // filling in what's missing). Mirrors HeroSection.tsx's own per-key merge.
       if (configResp.data?.heroConfig) {
         const fetchedHero = configResp.data.heroConfig;
-        setHeroConfig({
+        const mergedHero: HeroConfig = {
           activeTemplate: fetchedHero.activeTemplate ?? DEFAULT_HERO.activeTemplate,
           templates: Object.fromEntries(
             Object.keys(DEFAULT_HERO.templates).map((key) => [
@@ -685,17 +1012,31 @@ export default function HomepageManager() {
               { ...DEFAULT_HERO.templates[key], ...fetchedHero.templates?.[key] },
             ]),
           ),
-        });
+        };
+        setHeroConfig(mergedHero);
+        try {
+          localStorage.setItem("crm_hero_config_cache", JSON.stringify(mergedHero));
+        } catch {}
       }
       if (configResp.data?.navbarConfig) {
         const fetchedNavbar = configResp.data.navbarConfig;
-        setNavbarConfig({
+        const mergedNavbar: NavbarConfig = {
           activeTemplate: fetchedNavbar.activeTemplate ?? DEFAULT_NAVBAR.activeTemplate,
-        });
+          templates: {
+            ...DEFAULT_NAVBAR.templates,
+            ...(fetchedNavbar.templates || {}),
+          },
+        };
+        setNavbarConfig(mergedNavbar);
+        try {
+          localStorage.setItem("crm_navbar_cache", JSON.stringify(mergedNavbar));
+        } catch {
+          // ignore
+        }
       }
       if (configResp.data?.footerConfig) {
         const fetchedFooter = configResp.data.footerConfig;
-        setFooterConfig({
+        const mergedFooter = {
           activeTemplate: fetchedFooter.activeTemplate ?? DEFAULT_FOOTER.activeTemplate,
           templates: Object.fromEntries(
             Object.keys(DEFAULT_FOOTER.templates).map((key) => [
@@ -703,12 +1044,50 @@ export default function HomepageManager() {
               { ...DEFAULT_FOOTER.templates[key], ...fetchedFooter.templates?.[key] },
             ]),
           ),
+        };
+        setFooterConfig(mergedFooter as FooterConfig);
+        try {
+          localStorage.setItem("crm_footer_config_cache", JSON.stringify(mergedFooter));
+        } catch {
+          // ignore
+        }
+      }
+      if (configResp.data?.preFooterConfig) {
+        const fetchedPreFooter = configResp.data.preFooterConfig;
+        setPreFooterConfig({
+          enabled: fetchedPreFooter.enabled ?? DEFAULT_PRE_FOOTER_CONFIG.enabled,
+          autoplaySpeed: fetchedPreFooter.autoplaySpeed ?? DEFAULT_PRE_FOOTER_CONFIG.autoplaySpeed,
+          banners: Array.isArray(fetchedPreFooter.banners) ? fetchedPreFooter.banners : [],
         });
       }
-      const fetchedThemeId: string | undefined = configResp.data?.themeConfig?.themeId;
+      if (configResp.data?.featuredCategoriesConfig) {
+        const fetchedCatConfig = configResp.data.featuredCategoriesConfig;
+        setFeaturedCatConfig({
+          slots:
+            Array.isArray(fetchedCatConfig.slots) && fetchedCatConfig.slots.length > 0
+              ? fetchedCatConfig.slots
+              : DEFAULT_FEATURED_CATEGORIES_CONFIG.slots,
+        });
+      }
+      const fetchedThemeConfig = configResp.data?.themeConfig;
+      const fetchedThemeId: string | undefined = fetchedThemeConfig?.themeId;
       if (fetchedThemeId) {
         setThemeId(fetchedThemeId);
         setDraftThemeId(fetchedThemeId);
+      }
+      if (fetchedThemeConfig?.customButtonBg) {
+        setCustomButtonBg(fetchedThemeConfig.customButtonBg);
+        setDraftButtonBg(fetchedThemeConfig.customButtonBg);
+      } else {
+        setCustomButtonBg("");
+        setDraftButtonBg("");
+      }
+      if (fetchedThemeConfig?.customButtonText) {
+        setCustomButtonText(fetchedThemeConfig.customButtonText);
+        setDraftButtonText(fetchedThemeConfig.customButtonText);
+      } else {
+        setCustomButtonText("");
+        setDraftButtonText("");
       }
       if (typeof configResp.data?.announcementTemplate === "number")
         setAnnouncementTemplate(configResp.data.announcementTemplate);
@@ -718,6 +1097,12 @@ export default function HomepageManager() {
         setDiscountTemplate(configResp.data.discountTemplate);
       if (typeof configResp.data?.featuredTemplate === "number")
         setFeaturedTemplate(configResp.data.featuredTemplate);
+      if (configResp.data?.categoryShape) {
+        setCategoryShape(configResp.data.categoryShape);
+        setDraftCategoryShape(configResp.data.categoryShape);
+      }
+      if (typeof configResp.data?.activeOccasionId !== "undefined")
+        setActiveOccasionId(configResp.data.activeOccasionId || null);
     } catch {
       // silently keep defaults
     } finally {
@@ -772,75 +1157,28 @@ export default function HomepageManager() {
   // than a dedicated one -- it already returns every field on Category, including
   // showInNav/navOrder, so there's nothing new to add server-side for reading.
 
-  const fetchNavCategories = useCallback(async () => {
-    setNavLoading(true);
+  const fetchCategories = useCallback(async () => {
     try {
       const { data } = await api.get("/category/list");
-      const topLevel: NavCategory[] = (data.list || [])
-        .filter((c: any) => !c.parentId)
+      const rawList = data.list || [];
+      const allCats = rawList
+        .filter((c: any) => c.status !== "inactive")
         .map((c: any) => ({
           id: c._id ?? c.id,
-          name: c.name,
-          showInNav: c.showInNav !== false,
-          navOrder: c.navOrder ?? 0,
+          name: c.parentId ? `— ${c.name}` : c.name,
         }))
-        .sort((a: NavCategory, b: NavCategory) => a.navOrder - b.navOrder || a.name.localeCompare(b.name));
-      setNavCategories(topLevel);
-      setNavDirty(false);
+        .sort((a: any, b: any) =>
+          a.name.replace(/^—\s*/, "").localeCompare(b.name.replace(/^—\s*/, ""))
+        );
+      setAllCategoriesList(allCats);
     } catch {
       toast.error("Failed to load categories");
-    } finally {
-      setNavLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    if (activeTab === "NAVIGATION") fetchNavCategories();
+    if (activeTab === "FEATURED") fetchCategories();
   }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const toggleNavVisibility = (id: string) => {
-    setNavCategories((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, showInNav: !c.showInNav } : c)),
-    );
-    setNavDirty(true);
-  };
-
-  const moveNavCategory = (id: string, direction: "up" | "down") => {
-    setNavCategories((prev) => {
-      const index = prev.findIndex((c) => c.id === id);
-      const swapWith = direction === "up" ? index - 1 : index + 1;
-      if (index === -1 || swapWith < 0 || swapWith >= prev.length) return prev;
-      const next = [...prev];
-      [next[index], next[swapWith]] = [next[swapWith], next[index]];
-      return next;
-    });
-    setNavDirty(true);
-  };
-
-  const saveNavSettings = async () => {
-    if (!canCategoryEdit) {
-      toast.error(NO_PERMISSION_MSG, { id: "nav-perm-error" });
-      return;
-    }
-    if (navSaving) return;
-    setNavSaving(true);
-    try {
-      const items = navCategories.map((c, index) => ({
-        id: c.id,
-        showInNav: c.showInNav,
-        navOrder: index,
-      }));
-      await api.patch("/category/nav-order", { items });
-      toast.success("Navigation menu updated", { id: "nav-settings-updated" });
-      setNavDirty(false);
-      fetchNavCategories();
-      refreshPreview();
-    } catch {
-      toast.error("Failed to save navigation settings", { id: "nav-settings-error" });
-    } finally {
-      setNavSaving(false);
-    }
-  };
 
   // -- Announcement -------------------------------------------------------
 
@@ -892,21 +1230,56 @@ export default function HomepageManager() {
     if (savingTheme) return;
     setSavingTheme(true);
     try {
-      await api.put("/admin/homepage-config/theme", { themeId: draftThemeId });
+      const payload = {
+        themeId: draftThemeId,
+        customButtonBg: draftButtonBg || null,
+        customButtonText: draftButtonText || null,
+      };
+      await api.put("/admin/homepage-config/theme", payload);
       setThemeId(draftThemeId);
-      toast.success("Storefront theme updated", { id: "storefront-theme-updated" });
+      setCustomButtonBg(draftButtonBg);
+      setCustomButtonText(draftButtonText);
+      toast.success("Storefront theme & button colors saved", { id: "storefront-theme-updated" });
       refreshPreview();
     } catch {
       toast.error("Failed to update storefront theme", { id: "storefront-theme-error" });
       // Roll the draft back to the last saved value so the picker/preview don't keep
       // showing a theme that never actually saved.
       setDraftThemeId(themeId);
+      setDraftButtonBg(customButtonBg);
+      setDraftButtonText(customButtonText);
     } finally {
       setSavingTheme(false);
     }
   };
 
-  // ── Presentation-only section templates (Announcement/Carousel/Discount/Featured) ──
+  const handleSaveCategoryShape = async (shapeToSave: "square" | "circle" = draftCategoryShape) => {
+    if (!canBannerEdit) {
+      toast.error(NO_PERMISSION_MSG);
+      return;
+    }
+    if (savingCategoryShape) return;
+    setSavingCategoryShape(true);
+    try {
+      const res = await api.put("/admin/homepage-config/category-shape", {
+        categoryShape: shapeToSave,
+      });
+      const savedShape = res.data?.categoryShape || shapeToSave;
+      setCategoryShape(savedShape);
+      setDraftCategoryShape(savedShape);
+      try {
+        localStorage.setItem("storra_category_shape_cache", savedShape);
+      } catch {}
+      refreshPreview();
+      toast.success(`Category shape saved as ${savedShape}`, { id: "cat-shape-save" });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed to save category shape", { id: "cat-shape-err" });
+    } finally {
+      setSavingCategoryShape(false);
+    }
+  };
+
+  // -¢------¬-¢------¬ Presentation-only section templates (Announcement/Carousel/Discount/Featured) -¢------¬-¢------¬
   // Each is a bare positive integer, not a JSON blob — no per-template content to save,
   // just which layout renders the section's existing data (see the state declarations
   // above). All four follow the identical save-then-preview-refresh shape, factored into
@@ -941,122 +1314,82 @@ export default function HomepageManager() {
   const handleFeaturedTemplateSelect = (n: number) =>
     saveSectionTemplate("/admin/homepage-config/featured-template", n, featuredTemplate, setFeaturedTemplate);
 
-  // â”€â”€ Occasion presets â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  // Every text field a preset sets is editable before it saves — the preset only fixes
-  // the theme/template *choices*, not the exact wording, so the same "Diwali" preset
-  // works for any store's own voice instead of forcing one canned copy on everyone.
-  const buildCustomizationFromPreset = (preset: OccasionPreset): PresetCustomization => {
-    const heroDefaults = DEFAULT_HERO.templates[String(preset.heroTemplate)] ?? DEFAULT_HERO.templates["1"];
-    return {
-      heroTitle: preset.heroContentOverride?.title ?? heroDefaults.title,
-      heroSubtitle: preset.heroContentOverride?.subtitle ?? heroDefaults.subtitle,
-      heroCtaText: preset.heroContentOverride?.ctaText ?? heroDefaults.ctaText,
-      heroAccentText: preset.heroContentOverride?.accentText ?? heroDefaults.accentText ?? "",
-      heroBadgeText: preset.heroContentOverride?.badgeText ?? heroDefaults.badgeText ?? "",
-      announcementText: preset.announcementTextOverride ?? "",
-      footerTagline: preset.footerTaglineOverride ?? "",
-    };
-  };
-
-  const openPresetConfirm = (preset: OccasionPreset) => {
-    setConfirmingPreset(preset);
-    setPresetCustomization(buildCustomizationFromPreset(preset));
-  };
-
-  // A preset counts as "currently applied" when every structural choice it sets
-  // (theme + each section's template) matches the live config — not the copy, since
-  // that's freely editable after applying and shouldn't make an otherwise-matching
-  // preset look unapplied just because an admin tweaked a sentence.
-  const isPresetApplied = (preset: OccasionPreset) =>
-    themeId === preset.themeId &&
-    heroConfig.activeTemplate === preset.heroTemplate &&
-    footerConfig.activeTemplate === preset.footerTemplate &&
-    announcementTemplate === preset.announcementTemplate &&
-    carouselTemplate === preset.carouselTemplate &&
-    discountTemplate === preset.discountTemplate &&
-    featuredTemplate === preset.featuredTemplate;
-
-  const activeOccasion = OCCASION_PRESETS.find((preset) => isPresetApplied(preset));
-  const isOccasionActive = Boolean(activeOccasion);
-
-  const applyOccasionPreset = async (preset: OccasionPreset, customization: PresetCustomization) => {
+  const handleSlotTemplateSelect = async (slotIdx: number, templateNum: number) => {
     if (!canBannerEdit) {
       toast.error(NO_PERMISSION_MSG);
-      setConfirmingPreset(null);
+      return;
+    }
+    const currentSlots =
+      Array.isArray(featuredCatConfig.slots) && featuredCatConfig.slots.length > 0
+        ? [...featuredCatConfig.slots]
+        : [...DEFAULT_FEATURED_CATEGORIES_CONFIG.slots];
+    while (currentSlots.length <= slotIdx) {
+      currentSlots.push({
+        id: `slot-${currentSlots.length + 1}`,
+        categoryId: "",
+        customTitle: "",
+        customSubtitle: "",
+        limit: 8,
+        isActive: true,
+        template: 1,
+      });
+    }
+    const previousSlots = [...currentSlots];
+    currentSlots[slotIdx] = { ...currentSlots[slotIdx], template: templateNum };
+    const cleanSlots: FeaturedCategorySlot[] = currentSlots.slice(0, 2).map((s, idx) => ({
+      id: s.id || `slot-${idx + 1}`,
+      categoryId: (s.categoryId || "").trim(),
+      customTitle: (s.customTitle || "").trim(),
+      customSubtitle: (s.customSubtitle || "").trim(),
+      limit: Number(s.limit) || 8,
+      isActive: s.isActive !== false,
+      template: Number(s.template) || 1,
+    }));
+    const payload: FeaturedCategoriesConfig = { slots: cleanSlots };
+    setFeaturedCatConfig(payload);
+    try {
+      await api.put("/admin/homepage-config/featured-categories", payload);
+      refreshPreview();
+      toast.success(
+        `Featured Section ${slotIdx + 2} layout updated to ${FEATURED_TEMPLATE_LABELS[String(templateNum)]?.name || "Template " + templateNum}`,
+        { id: `feat-slot-${slotIdx}-template` }
+      );
+    } catch (err: any) {
+      console.error("handleSlotTemplateSelect error:", err);
+      const msg = err?.response?.data?.message || "Failed to update layout";
+      toast.error(msg, { id: `feat-slot-${slotIdx}-template-err` });
+      setFeaturedCatConfig({ slots: previousSlots });
+    }
+  };
+
+  // -¢------¬-¢------¬-¢------¬ Occasion presets -¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬
+  // A preset counts as "currently applied" when activeOccasionId matches the preset id.
+  const isPresetApplied = (preset: OccasionPreset) => activeOccasionId === preset.id;
+  const activeOccasion = OCCASION_PRESETS.find((preset) => preset.id === activeOccasionId) || null;
+  const isOccasionActive = Boolean(activeOccasion);
+
+  const applyOccasionPreset = async (preset: OccasionPreset) => {
+    if (!canBannerEdit) {
+      toast.error(NO_PERMISSION_MSG);
       return;
     }
     setApplyingPreset(true);
+    try {
+      await api.put("/admin/homepage-config/occasion", { occasionId: preset.id });
+      setActiveOccasionId(preset.id);
 
-    // Snapshot pre-occasion store layout to allow clean restoration when toggled off
-    if (!isOccasionActive) {
-      try {
-        const snapshot = {
-          themeId,
-          heroActiveTemplate: heroConfig.activeTemplate,
-          footerActiveTemplate: footerConfig.activeTemplate,
-          announcementTemplate,
-          carouselTemplate,
-          discountTemplate,
-          featuredTemplate,
-          announcementText,
-        };
-        localStorage.setItem("storra_pre_occasion_snapshot", JSON.stringify(snapshot));
-      } catch (err) {
-        console.warn("Failed to cache pre-occasion snapshot", err);
+      // Pre-fill announcementText with this festival's marquee copy so it is immediately editable
+      const festivePreset = FESTIVE_ANNOUNCEMENTS[preset.id];
+      if (festivePreset?.items?.length) {
+        setAnnouncementText(festivePreset.items.join(" | "));
       }
-    }
 
-    const heroDefaults = DEFAULT_HERO.templates[String(preset.heroTemplate)] ?? DEFAULT_HERO.templates["1"];
-    const footerKey = String(preset.footerTemplate);
-    // Every one of these is the exact same PUT an admin's individual picker already
-    // sends — allSettled (not all) so one endpoint being unreachable doesn't stop the
-    // rest from applying, and so a STAFF member without company-settings access (see
-    // saveAnnouncement's admin-only gate) still gets everything else the preset sets.
-    const results = await Promise.allSettled([
-      api.put("/admin/homepage-config/theme", { themeId: preset.themeId }),
-      api.put("/admin/homepage-config/hero", {
-        activeTemplate: preset.heroTemplate,
-        templates: {
-          ...heroConfig.templates,
-          [String(preset.heroTemplate)]: {
-            ...heroDefaults,
-            title: customization.heroTitle,
-            subtitle: customization.heroSubtitle,
-            ctaText: customization.heroCtaText,
-            accentText: customization.heroAccentText || undefined,
-            badgeText: customization.heroBadgeText || undefined,
-          },
-        },
-      }),
-      api.put("/admin/homepage-config/footer", {
-        ...footerConfig,
-        activeTemplate: preset.footerTemplate,
-        templates: customization.footerTagline
-          ? { ...footerConfig.templates, [footerKey]: { ...footerConfig.templates[footerKey], tagline: customization.footerTagline } }
-          : footerConfig.templates,
-      }),
-      api.put("/admin/homepage-config/announcement-template", { activeTemplate: preset.announcementTemplate }),
-      api.put("/admin/homepage-config/carousel-template", { activeTemplate: preset.carouselTemplate }),
-      api.put("/admin/homepage-config/discount-template", { activeTemplate: preset.discountTemplate }),
-      api.put("/admin/homepage-config/featured-template", { activeTemplate: preset.featuredTemplate }),
-      ...(customization.announcementText
-        ? [api.put("/admin/company-settings", { announcementBar: customization.announcementText })]
-        : []),
-    ]);
-    const failures = results.filter((r) => r.status === "rejected").length;
-
-    setThemeId(preset.themeId);
-    setDraftThemeId(preset.themeId);
-    await fetchHomepageConfig(); // resync every local field from what actually saved
-    refreshPreview();
-    setApplyingPreset(false);
-    setConfirmingPreset(null);
-    setPresetCustomization(null);
-
-    if (failures === 0) {
-      toast.success(`${preset.name} applied`);
-    } else {
-      toast.error(`${preset.name} applied with ${failures} field${failures > 1 ? "s" : ""} that didn't save — check your permissions and try again`);
+      toast.success(`${preset.name} ambient animation activated! 🎉`);
+      refreshPreview();
+    } catch {
+      toast.error("Failed to activate festive occasion");
+    } finally {
+      setApplyingPreset(false);
     }
   };
 
@@ -1066,94 +1399,15 @@ export default function HomepageManager() {
       return;
     }
     setDisablingOccasion(true);
-
-    let targetThemeId = DEFAULT_THEME_ID;
-    let targetHeroTemplate = 1;
-    let targetFooterTemplate = 1;
-    let targetAnnouncementTemplate = 1;
-    let targetCarouselTemplate = 1;
-    let targetDiscountTemplate = 1;
-    let targetFeaturedTemplate = 1;
-    let targetAnnouncementText = DEFAULT_ANNOUNCEMENT_TEXT;
-
     try {
-      const savedRaw = localStorage.getItem("storra_pre_occasion_snapshot");
-      if (savedRaw) {
-        const saved = JSON.parse(savedRaw);
-        // Ensure saved snapshot doesn't match an occasion preset
-        const matchesAnyPreset = OCCASION_PRESETS.some(
-          (p) =>
-            p.themeId === saved.themeId &&
-            p.heroTemplate === saved.heroActiveTemplate &&
-            p.footerTemplate === saved.footerActiveTemplate
-        );
-        if (!matchesAnyPreset) {
-          if (saved.themeId) targetThemeId = saved.themeId;
-          if (typeof saved.heroActiveTemplate === "number") targetHeroTemplate = saved.heroActiveTemplate;
-          if (typeof saved.footerActiveTemplate === "number") targetFooterTemplate = saved.footerActiveTemplate;
-          if (typeof saved.announcementTemplate === "number") targetAnnouncementTemplate = saved.announcementTemplate;
-          if (typeof saved.carouselTemplate === "number") targetCarouselTemplate = saved.carouselTemplate;
-          if (typeof saved.discountTemplate === "number") targetDiscountTemplate = saved.discountTemplate;
-          if (typeof saved.featuredTemplate === "number") targetFeaturedTemplate = saved.featuredTemplate;
-          if (saved.announcementText) targetAnnouncementText = saved.announcementText;
-        }
-      }
-    } catch (err) {
-      console.warn("Failed to read pre-occasion snapshot", err);
-    }
-
-    const heroKey = String(targetHeroTemplate);
-    const heroDefaults = DEFAULT_HERO.templates[heroKey] ?? DEFAULT_HERO.templates["1"];
-    const footerKey = String(targetFooterTemplate);
-    const footerDefaults = DEFAULT_FOOTER.templates[footerKey] ?? DEFAULT_FOOTER.templates["1"];
-
-    const results = await Promise.allSettled([
-      api.put("/admin/homepage-config/theme", { themeId: targetThemeId }),
-      api.put("/admin/homepage-config/hero", {
-        activeTemplate: targetHeroTemplate,
-        templates: {
-          ...heroConfig.templates,
-          [heroKey]: {
-            ...DEFAULT_HERO.templates[heroKey],
-            ...heroDefaults,
-          },
-        },
-      }),
-      api.put("/admin/homepage-config/footer", {
-        ...footerConfig,
-        activeTemplate: targetFooterTemplate,
-        templates: {
-          ...footerConfig.templates,
-          [footerKey]: {
-            ...DEFAULT_FOOTER.templates[footerKey],
-            ...footerDefaults,
-          },
-        },
-      }),
-      api.put("/admin/homepage-config/announcement-template", { activeTemplate: targetAnnouncementTemplate }),
-      api.put("/admin/homepage-config/carousel-template", { activeTemplate: targetCarouselTemplate }),
-      api.put("/admin/homepage-config/discount-template", { activeTemplate: targetDiscountTemplate }),
-      api.put("/admin/homepage-config/featured-template", { activeTemplate: targetFeaturedTemplate }),
-      ...(!isStaff && targetAnnouncementText
-        ? [api.put("/admin/company-settings", { announcementBar: targetAnnouncementText })]
-        : []),
-    ]);
-
-    try {
-      localStorage.removeItem("storra_pre_occasion_snapshot");
-    } catch {}
-
-    setThemeId(targetThemeId);
-    setDraftThemeId(targetThemeId);
-    await fetchHomepageConfig();
-    refreshPreview();
-    setDisablingOccasion(false);
-
-    const failures = results.filter((r) => r.status === "rejected").length;
-    if (failures === 0) {
-      toast.success("Occasion turned off — default store layout restored");
-    } else {
-      toast.error(`Occasion turned off with ${failures} unsaved field${failures > 1 ? "s" : ""}`);
+      await api.put("/admin/homepage-config/occasion", { occasionId: null });
+      setActiveOccasionId(null);
+      toast.success("Festive occasion deactivated");
+      refreshPreview();
+    } catch {
+      toast.error("Failed to deactivate festive occasion");
+    } finally {
+      setDisablingOccasion(false);
     }
   };
 
@@ -1165,7 +1419,7 @@ export default function HomepageManager() {
     if (isOccasionActive) {
       disableActiveOccasion();
     } else {
-      toast("Select any festive occasion below and click Apply to turn it on.", {
+      toast("Select any festive occasion below and click Activate to turn it on.", {
         icon: "✨",
         id: "occasion-toggle-hint",
       });
@@ -1173,7 +1427,8 @@ export default function HomepageManager() {
     }
   };
 
-  // â”€â”€ Hero Config â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+  // -¢------¬-¢------¬-¢------¬ Hero Config -¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬
 
   const handleHeroTemplateSelect = async (templateNum: number) => {
     if (!canBannerEdit) {
@@ -1182,11 +1437,15 @@ export default function HomepageManager() {
     }
     const updated = {
       ...heroConfig,
-      activeTemplate: templateNum as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9,
+      activeTemplate: templateNum as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10,
     };
     setHeroConfig(updated);
     try {
       await api.put("/admin/homepage-config/hero", updated);
+      try {
+        localStorage.setItem("crm_hero_config_cache", JSON.stringify(updated));
+        window.dispatchEvent(new CustomEvent("crm_hero_config_updated"));
+      } catch {}
       toast.success(`Hero template ${templateNum} activated`, { id: "hero-template-activated" });
       refreshPreview();
     } catch {
@@ -1203,14 +1462,20 @@ export default function HomepageManager() {
       DEFAULT_HERO.templates[templateKey] ??
       DEFAULT_HERO.templates["1"];
     const cleaned = { ...rawData };
-    // Prevent cross-template field leakage between collage templates and background image templates
-    if (["1", "3", "5"].includes(templateKey)) {
+    // Prevent cross-template field leakage between collage/carousel templates and background image templates
+    if (["1", "3", "5", "6", "8", "9"].includes(templateKey)) {
       delete cleaned.bgImage;
-    } else if (["2", "4", "6", "9"].includes(templateKey)) {
+    } else if (["2", "4", "10"].includes(templateKey)) {
       delete cleaned.images;
-    } else if (["7", "8"].includes(templateKey)) {
+      delete cleaned.imageTitles;
+      delete cleaned.imageLinks;
+      delete cleaned.imageSubtitles;
+    } else if (["7"].includes(templateKey)) {
       delete cleaned.bgImage;
       delete cleaned.images;
+      delete cleaned.imageTitles;
+      delete cleaned.imageLinks;
+      delete cleaned.imageSubtitles;
     }
     setHeroForm(cleaned);
     setEditingHeroTemplate(templateKey);
@@ -1226,13 +1491,19 @@ export default function HomepageManager() {
 
     // Sanitize template data to prevent cross-pollution between bgImage and images
     const sanitizedForm: HeroTemplateData = { ...heroForm };
-    if (["1", "3", "5"].includes(editingHeroTemplate)) {
+    if (["1", "3", "5", "6", "8", "9"].includes(editingHeroTemplate)) {
       delete sanitizedForm.bgImage;
-    } else if (["2", "4", "6", "9"].includes(editingHeroTemplate)) {
+    } else if (["2", "4", "10"].includes(editingHeroTemplate)) {
       delete sanitizedForm.images;
-    } else if (["7", "8"].includes(editingHeroTemplate)) {
+      delete sanitizedForm.imageTitles;
+      delete sanitizedForm.imageLinks;
+      delete sanitizedForm.imageSubtitles;
+    } else if (["7"].includes(editingHeroTemplate)) {
       delete sanitizedForm.bgImage;
       delete sanitizedForm.images;
+      delete sanitizedForm.imageTitles;
+      delete sanitizedForm.imageLinks;
+      delete sanitizedForm.imageSubtitles;
     }
 
     const updated: HeroConfig = {
@@ -1243,6 +1514,10 @@ export default function HomepageManager() {
       setSavingHero(true);
       await api.put("/admin/homepage-config/hero", updated);
       setHeroConfig(updated);
+      try {
+        localStorage.setItem("crm_hero_config_cache", JSON.stringify(updated));
+        window.dispatchEvent(new CustomEvent("crm_hero_config_updated"));
+      } catch {}
       setEditingHeroTemplate(null);
       toast.success("Hero template saved", { id: "hero-template-saved" });
       refreshPreview();
@@ -1349,7 +1624,7 @@ export default function HomepageManager() {
     }
   };
 
-  // ── Header / Navbar Config ──────────────────────────────────────────────────
+  // -¢------¬-¢------¬ Header / Navbar Config -¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬
 
   const handleNavbarTemplateSelect = async (templateNum: number) => {
     if (!canBannerEdit) {
@@ -1359,13 +1634,22 @@ export default function HomepageManager() {
     if (savingNavbar) return;
     const updated: NavbarConfig = {
       ...navbarConfig,
-      activeTemplate: templateNum as 1 | 2 | 3 | 4,
+      activeTemplate: templateNum as 1 | 2 | 3 | 4 | 5 | 6,
     };
     setNavbarConfig(updated);
     try {
       setSavingNavbar(true);
       await api.put("/admin/homepage-config/navbar", updated);
       toast.success(`Header template ${templateNum} activated`, { id: "navbar-template-activated" });
+      try {
+        localStorage.setItem("crm_navbar_cache", JSON.stringify(updated));
+      } catch {}
+      window.postMessage({ type: "STORRA_PREVIEW_NAVBAR", template: templateNum }, "*");
+      document.querySelectorAll("iframe").forEach((frame) => {
+        try {
+          frame.contentWindow?.postMessage({ type: "STORRA_PREVIEW_NAVBAR", template: templateNum }, "*");
+        } catch {}
+      });
       refreshPreview();
     } catch {
       toast.error("Failed to update navbar template", { id: "navbar-template-error" });
@@ -1374,7 +1658,70 @@ export default function HomepageManager() {
     }
   };
 
-  // â”€â”€ Footer Config â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const openNavbarEdit = (templateKey: string) => {
+    const existing = navbarConfig.templates?.[templateKey] || {};
+    setNavbarForm({ ...existing });
+    setEditingNavbarTemplate(templateKey);
+  };
+
+  const saveNavbarTemplate = async () => {
+    if (!editingNavbarTemplate) return;
+    if (!canBannerEdit) {
+      toast.error(NO_PERMISSION_MSG, { id: "navbar-perm-error" });
+      return;
+    }
+    if (savingNavbar) return;
+    const sanitizeSolidHex = (val?: string): string | undefined => {
+      if (!val) return undefined;
+      let s = val.trim();
+      if (s.toLowerCase() === "white") return "#ffffff";
+      if (s.toLowerCase() === "black") return "#000000";
+      if (!s.startsWith("#") && /^[0-9A-Fa-f]{3,6}$/.test(s)) s = "#" + s;
+      if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(s)) return s;
+      return undefined;
+    };
+
+    const validBg = sanitizeSolidHex(navbarForm.bgColor);
+    const validText = sanitizeSolidHex(navbarForm.textColor);
+
+    const cleanedForm: NavbarTemplateData = {};
+    if (validBg) cleanedForm.bgColor = validBg;
+    if (validText) cleanedForm.textColor = validText;
+
+    const updated: NavbarConfig = {
+      ...navbarConfig,
+      templates: {
+        ...(navbarConfig.templates || {}),
+        [editingNavbarTemplate]: cleanedForm,
+      },
+    };
+    try {
+      setSavingNavbar(true);
+      await api.put("/admin/homepage-config/navbar", updated);
+      setNavbarConfig(updated);
+      try {
+        localStorage.setItem("crm_navbar_cache", JSON.stringify(updated));
+        window.dispatchEvent(new CustomEvent("crm_navbar_cache_updated"));
+      } catch {
+        // ignore
+      }
+      window.postMessage({ type: "STORRA_PREVIEW_NAVBAR", template: updated.activeTemplate, config: updated }, "*");
+      document.querySelectorAll("iframe").forEach((frame) => {
+        try {
+          frame.contentWindow?.postMessage({ type: "STORRA_PREVIEW_NAVBAR", template: updated.activeTemplate, config: updated }, "*");
+        } catch {}
+      });
+      setEditingNavbarTemplate(null);
+      toast.success("Header template colors saved", { id: "navbar-template-saved" });
+      refreshPreview();
+    } catch {
+      toast.error("Failed to save header template colors", { id: "navbar-template-save-error" });
+    } finally {
+      setSavingNavbar(false);
+    }
+  };
+
+  // ---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬ Footer Config ---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬
 
   const handleFooterTemplateSelect = async (templateNum: number) => {
     if (!canBannerEdit) {
@@ -1387,6 +1734,12 @@ export default function HomepageManager() {
     };
     setFooterConfig(updated);
     try {
+      localStorage.setItem("crm_footer_config_cache", JSON.stringify(updated));
+      window.dispatchEvent(new CustomEvent("crm_footer_config_updated"));
+    } catch {
+      // ignore
+    }
+    try {
       await api.put("/admin/homepage-config/footer", updated);
       toast.success(`Footer template ${templateNum} activated`, { id: "footer-template-activated" });
       refreshPreview();
@@ -1397,8 +1750,12 @@ export default function HomepageManager() {
 
   const openFooterEdit = (templateKey: string) => {
     // Same "fall back to this template's own defaults" fix as openHeroEdit above.
+    const existing = footerConfig.templates[templateKey] ?? DEFAULT_FOOTER.templates[templateKey] ?? DEFAULT_FOOTER.templates["1"];
+    const defaultBlend = templateKey === "2" || templateKey === "4" || templateKey === "6";
     setFooterForm({
-      ...(footerConfig.templates[templateKey] ?? DEFAULT_FOOTER.templates[templateKey] ?? DEFAULT_FOOTER.templates["1"]),
+      ...existing,
+      showCompanyName: existing?.showCompanyName !== undefined ? existing.showCompanyName : true,
+      blendLogoWithBg: existing?.blendLogoWithBg !== undefined ? existing.blendLogoWithBg : defaultBlend,
     });
     setEditingFooterTemplate(templateKey);
   };
@@ -1428,17 +1785,42 @@ export default function HomepageManager() {
       return;
     }
     if (savingFooter) return;
+    const sanitizeSolidHex = (val?: string): string | undefined => {
+      if (!val) return undefined;
+      let s = val.trim();
+      if (s.toLowerCase() === "white") return "#ffffff";
+      if (s.toLowerCase() === "black") return "#000000";
+      if (!s.startsWith("#") && /^[0-9A-Fa-f]{3,6}$/.test(s)) s = "#" + s;
+      if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(s)) return s;
+      return undefined;
+    };
+
+    const validBg = sanitizeSolidHex(footerForm.bgColor);
+    const validText = sanitizeSolidHex(footerForm.textColor);
+
+    const cleanedForm: FooterTemplateData = { ...footerForm };
+    if (validBg) cleanedForm.bgColor = validBg;
+    else delete cleanedForm.bgColor;
+    if (validText) cleanedForm.textColor = validText;
+    else delete cleanedForm.textColor;
+    cleanedForm.blendLogoWithBg = Boolean(footerForm.blendLogoWithBg);
     const updated: FooterConfig = {
       ...footerConfig,
       templates: {
         ...footerConfig.templates,
-        [editingFooterTemplate]: footerForm,
+        [editingFooterTemplate]: cleanedForm,
       },
     };
     try {
       setSavingFooter(true);
       await api.put("/admin/homepage-config/footer", updated);
       setFooterConfig(updated);
+      try {
+        localStorage.setItem("crm_footer_config_cache", JSON.stringify(updated));
+        window.dispatchEvent(new CustomEvent("crm_footer_config_updated"));
+      } catch {
+        // ignore
+      }
       setEditingFooterTemplate(null);
       toast.success("Footer template saved", { id: "footer-template-saved" });
       refreshPreview();
@@ -1449,7 +1831,193 @@ export default function HomepageManager() {
     }
   };
 
-  // â”€â”€ Featured â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // -¢------¬-¢------¬ Pre-Footer Banners -¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬
+
+  const updatePreFooterSlot = (index: number, updates: Partial<PreFooterBannerItem>) => {
+    setPreFooterConfig((prev) => {
+      const banners = [...(prev.banners || [])];
+      while (banners.length <= index) {
+        banners.push({
+          id: `pf-${Date.now()}-${banners.length}`,
+          image: "",
+          link: "",
+          title: "",
+          isActive: true,
+        });
+      }
+      banners[index] = {
+        ...banners[index],
+        ...updates,
+        id: banners[index].id || `pf-${Date.now()}-${index}`,
+      };
+      return { ...prev, banners };
+    });
+  };
+
+  const uploadPreFooterSlotImage = async (file: File, index: number) => {
+    if (!canBannerEdit) {
+      toast.error(NO_PERMISSION_MSG, { id: "prefooter-upload-perm-error" });
+      return;
+    }
+    if (file.size >= MAX_IMAGE_SIZE) {
+      toast.error("Please add image below 1 MB", { id: "prefooter-img-size-error" });
+      return;
+    }
+    const currentSlot = preFooterConfig.banners?.[index];
+    const previousUrl = currentSlot?.image;
+    try {
+      setUploadingPreFooterSlot(index);
+      const fd = new FormData();
+      fd.append("image", file);
+      fd.append("folder", "pre-footer");
+      if (previousUrl && previousUrl.includes("cloudinary.com")) {
+        fd.append("previousUrl", previousUrl);
+      }
+      const { data } = await api.post("/admin/upload-image", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      updatePreFooterSlot(index, { image: data.url, isActive: true });
+      toast.success(`Banner ${index + 1} uploaded successfully`, { id: "prefooter-img-uploaded" });
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || "Image upload failed";
+      toast.error(msg, { id: "prefooter-img-upload-error" });
+    } finally {
+      setUploadingPreFooterSlot(null);
+    }
+  };
+
+  const removePreFooterSlotImage = async (index: number) => {
+    if (!canBannerEdit) {
+      toast.error(NO_PERMISSION_MSG, { id: "prefooter-delete-perm-error" });
+      return;
+    }
+    const currentSlot = preFooterConfig.banners?.[index];
+    const oldUrl = currentSlot?.image;
+    updatePreFooterSlot(index, { image: "", link: "", title: "" });
+    if (oldUrl && oldUrl.includes("cloudinary.com")) {
+      try {
+        await api.post("/admin/delete-image", { url: oldUrl });
+        toast.success(`Banner ${index + 1} image removed`, { id: "prefooter-img-removed" });
+      } catch {
+        // Silently handled
+      }
+    }
+  };
+
+  const savePreFooterConfig = async () => {
+    if (!canBannerEdit) {
+      toast.error(NO_PERMISSION_MSG, { id: "prefooter-perm-error" });
+      return;
+    }
+    if (savingPreFooter) return;
+
+    const cleanBanners = (preFooterConfig.banners || [])
+      .filter((b) => b && typeof b.image === "string" && b.image.trim() !== "")
+      .slice(0, 3)
+      .map((b, idx) => ({
+        id: b.id || `pf-${Date.now()}-${idx}`,
+        image: b.image.trim(),
+        link: (b.link || "").trim(),
+        title: (b.title || "").trim(),
+        isActive: b.isActive !== false,
+      }));
+
+    const payload: PreFooterConfig = {
+      enabled: preFooterConfig.enabled !== false,
+      banners: cleanBanners,
+    };
+
+    try {
+      setSavingPreFooter(true);
+      await api.put("/admin/homepage-config/pre-footer", payload);
+      setPreFooterConfig(payload);
+      toast.success("Pre-footer banners saved successfully", { id: "prefooter-saved" });
+      refreshPreview();
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || "Failed to save pre-footer banners";
+      toast.error(msg, { id: "prefooter-save-error" });
+    } finally {
+      setSavingPreFooter(false);
+    }
+  };
+
+  // -¢------¬-¢------¬ Category Showcases (Sections 2 to 3) -¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬
+
+  const updateFeaturedCategorySlot = (
+    index: number,
+    patch: Partial<FeaturedCategorySlot>
+  ) => {
+    setFeaturedCatConfig((prev) => {
+      const currentSlots =
+        Array.isArray(prev.slots) && prev.slots.length > 0
+          ? [...prev.slots]
+          : [...DEFAULT_FEATURED_CATEGORIES_CONFIG.slots];
+      while (currentSlots.length <= index) {
+        currentSlots.push({
+          id: `slot-${currentSlots.length + 1}`,
+          categoryId: "",
+          customTitle: "",
+          customSubtitle: "",
+          limit: 8,
+          isActive: true,
+          template: 1,
+        });
+      }
+      currentSlots[index] = { ...currentSlots[index], ...patch };
+      return { ...prev, slots: currentSlots };
+    });
+  };
+
+  const saveFeaturedCategoriesConfig = async () => {
+    if (!canBannerEdit) {
+      toast.error(NO_PERMISSION_MSG, { id: "featured-cat-perm-error" });
+      return;
+    }
+    if (savingFeaturedCategories) return;
+
+    const cleanSlots: FeaturedCategorySlot[] = (
+      featuredCatConfig.slots || DEFAULT_FEATURED_CATEGORIES_CONFIG.slots
+    )
+      .slice(0, 2)
+      .map((s, idx) => ({
+        id: s.id || `slot-${idx + 1}`,
+        categoryId: (s.categoryId || "").trim(),
+        customTitle: (s.customTitle || "").trim(),
+        customSubtitle: (s.customSubtitle || "").trim(),
+        limit: Number(s.limit) || 8,
+        isActive: s.isActive !== false,
+        template: Number(s.template) || 1,
+      }));
+
+    const payload: FeaturedCategoriesConfig = {
+      slots: cleanSlots,
+    };
+
+    try {
+      setSavingFeaturedCategories(true);
+      const { data } = await api.put(
+        "/admin/homepage-config/featured-categories",
+        payload
+      );
+      if (data?.featuredCategoriesConfig) {
+        setFeaturedCatConfig(data.featuredCategoriesConfig);
+      } else {
+        setFeaturedCatConfig(payload);
+      }
+      toast.success("Category showcase sections saved successfully", {
+        id: "featured-cat-saved",
+      });
+      refreshPreview();
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.message || "Failed to save category showcases";
+      toast.error(msg, { id: "featured-cat-save-error" });
+    } finally {
+      setSavingFeaturedCategories(false);
+    }
+  };
+
+  // ---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬ Featured ---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬
 
   const handleFeaturedSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1611,7 +2179,7 @@ export default function HomepageManager() {
       ? banners.filter((b) => b.type === activeTab)
       : [];
 
-  // â”€â”€ Section Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬ Section Header ---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬
 
   const openHeaderEdit = (
     section: "DISCOUNT" | "CAROUSEL" | "FEATURED" | "PROMO",
@@ -1660,7 +2228,7 @@ export default function HomepageManager() {
     }
   };
 
-  // â”€â”€ Banner form â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬ Banner form ---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬
 
   const openCreate = () => {
     setEditBanner(null);
@@ -1681,6 +2249,7 @@ export default function HomepageManager() {
     setForm({
       type: banner.type,
       title: banner.title,
+      link: banner.link ?? "",
       discount: banner.discount ?? "",
       description: banner.description ?? "",
       sortOrder: String(banner.sortOrder),
@@ -1716,6 +2285,7 @@ export default function HomepageManager() {
     const fd = new FormData();
     fd.append("type", form.type);
     fd.append("title", form.title);
+    fd.append("link", form.link.trim());
     fd.append("discount", form.discount);
     fd.append("description", form.description);
     fd.append("sortOrder", form.sortOrder);
@@ -1738,7 +2308,14 @@ export default function HomepageManager() {
       fetchBanners();
       refreshPreview();
     } catch (err: any) {
-      const msg = err?.response?.data?.message || "Failed to save banner";
+      const errData = err?.response?.data;
+      let msg = errData?.message || "Failed to save banner";
+      if (errData?.errors) {
+        const fieldMsgs = Object.entries(errData.errors)
+          .map(([f, m]: [string, any]) => `${f}: ${Array.isArray(m) ? m.join(", ") : m}`)
+          .join(" | ");
+        if (fieldMsgs) msg = `${msg}: ${fieldMsgs}`;
+      }
       toast.error(msg);
     } finally {
       setSaving(false);
@@ -1787,13 +2364,13 @@ export default function HomepageManager() {
     }
   };
 
-  // â”€â”€ Tab definitions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // -¢------¬-¢------¬-¢------¬ Tab definitions -¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬
 
   const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
     {
       key: "OCCASIONS",
       label: "Occasions",
-      icon: <SparklesIcon className="w-4 h-4" />,
+      icon: <SparklesIcon className="w-4 h-4 text-amber-500" />,
     },
     {
       key: "ANNOUNCEMENT",
@@ -1811,6 +2388,11 @@ export default function HomepageManager() {
       icon: <HeroPhotoIcon className="w-4 h-4" />,
     },
     {
+      key: "CATEGORIES",
+      label: "Categories Section",
+      icon: <Squares2X2Icon className="w-4 h-4" />,
+    },
+    {
       key: "PROMO_BANNER",
       label: "Banner Carousel",
       icon: <RectangleStackIcon className="w-4 h-4" />,
@@ -1819,14 +2401,14 @@ export default function HomepageManager() {
     { key: "CAROUSEL_ITEM", label: "Curated Carousel", icon: null },
     { key: "FEATURED", label: "Featured Collections", icon: null },
     {
+      key: "PRE_FOOTER",
+      label: "Pre-Footer Banners",
+      icon: <RectangleStackIcon className="w-4 h-4" />,
+    },
+    {
       key: "FOOTER",
       label: "Footer Section",
       icon: <Squares2X2Icon className="w-4 h-4" />,
-    },
-    {
-      key: "NAVIGATION",
-      label: "Navigation Menu",
-      icon: <Bars3Icon className="w-4 h-4" />,
     },
     {
       key: "THEME",
@@ -1835,29 +2417,35 @@ export default function HomepageManager() {
     },
   ];
 
-  // â”€â”€ Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // -¢------¬-¢------¬-¢------¬ Render -¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬
 
   // The single shared preview's anchor — which section of the real storefront it
   // scrolls to — derived from whichever tab is active. Undefined (top of page) for
   // tabs with no one specific section to jump to (Navigation, Theme).
   const previewAnchor: string | undefined =
-    activeTab === "ANNOUNCEMENT"
-      ? "announcement"
-      : activeTab === "HEADER"
-        ? "header"
-        : activeTab === "HERO"
-          ? "hero"
-        : activeTab === "FOOTER"
-          ? "footer"
-          : activeTab === "DISCOUNT_PANEL"
-            ? "discount"
-            : activeTab === "CAROUSEL_ITEM"
-              ? "carousel"
-              : activeTab === "PROMO_BANNER"
-                ? "banner"
-                : activeTab === "FEATURED"
-                  ? "featured"
-                  : undefined;
+    activeTab === "OCCASIONS"
+      ? "hero"
+      : activeTab === "ANNOUNCEMENT"
+        ? "announcement"
+        : activeTab === "HEADER"
+          ? "header"
+          : activeTab === "HERO"
+            ? "hero"
+          : activeTab === "CATEGORIES"
+            ? "category"
+          :  activeTab === "PRE_FOOTER"
+            ? "pre-footer"
+          : activeTab === "FOOTER"
+            ? "footer"
+            : activeTab === "DISCOUNT_PANEL"
+              ? "discount"
+              : activeTab === "CAROUSEL_ITEM"
+                ? "carousel"
+                : activeTab === "PROMO_BANNER"
+                  ? "banner"
+                  : activeTab === "FEATURED"
+                    ? "featured"
+                    : undefined;
 
   return (
     <div className="px-8 py-8 w-full bg-slate-50/50 min-h-screen">
@@ -1892,9 +2480,7 @@ export default function HomepageManager() {
             {label}
             {key === "OCCASIONS" && isOccasionActive && (
               <span
-                className={`w-2 h-2 rounded-full ${
-                  activeTab === key ? "bg-emerald-300" : "bg-emerald-500"
-                } animate-pulse`}
+                className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse ml-0.5"
                 title={`Active Occasion: ${activeOccasion?.name}`}
               />
             )}
@@ -1909,7 +2495,7 @@ export default function HomepageManager() {
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_400px] gap-8 items-start">
         <div className="min-w-0">
 
-      {/* ── OCCASIONS TAB ────────────────────────────────────────────────────── */}
+      {/* -¢------¬-¢------¬ OCCASIONS TAB -¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬ */}
       {activeTab === "OCCASIONS" && (
         <div className="space-y-6 animate-fadeIn">
           {/* Master Occasion Status & Toggle Card */}
@@ -1968,7 +2554,7 @@ export default function HomepageManager() {
                   }`}
                 >
                   {disablingOccasion
-                    ? "Turning off…"
+                    ? "Turning off..."
                     : isOccasionActive
                     ? "Occasion On"
                     : "Occasion Off"}
@@ -2028,7 +2614,7 @@ export default function HomepageManager() {
                             d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                           />
                         </svg>
-                        <span>Turning Off…</span>
+                        <span>Turning Off...</span>
                       </>
                     ) : (
                       <>
@@ -2042,11 +2628,124 @@ export default function HomepageManager() {
             </div>
           </div>
 
+          {/* Active Festive Announcement Banner Editor */}
+          {isOccasionActive && activeOccasion && (
+            <div className="bg-white border-2 border-amber-300/80 rounded-2xl p-6 shadow-md space-y-4 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-100/40 rounded-full blur-2xl pointer-events-none" />
+
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-100">
+                <div className="flex items-center gap-2.5">
+                  <span className="text-2xl">{activeOccasion.emoji}</span>
+                  <div>
+                    <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                      <span>{activeOccasion.name} Announcement Banner</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-200">
+                        Live Festive Banner
+                      </span>
+                    </h4>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Edit the announcement message scrolling at the top of your storefront during {activeOccasion.name}. Separate multiple messages using <code className="bg-gray-100 text-gray-700 px-1 py-0.5 rounded font-mono font-bold">|</code>.
+                    </p>
+                  </div>
+                </div>
+
+                {FESTIVE_ANNOUNCEMENTS[activeOccasion.id] && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const defaults = FESTIVE_ANNOUNCEMENTS[activeOccasion.id]?.items.join(" | ");
+                      if (defaults) {
+                        setAnnouncementText(defaults);
+                        toast.success(`Reset to ${activeOccasion.name} default messages! Click 'Save Festive Banner' to publish.`);
+                      }
+                    }}
+                    className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg border border-indigo-200 transition-colors shrink-0 self-start sm:self-center flex items-center gap-1.5"
+                  >
+                    <span>»</span>
+                    <span>Reset to {activeOccasion.name} Defaults</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Live Festive Banner Preview */}
+              {FESTIVE_ANNOUNCEMENTS[activeOccasion.id] && (
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                    Live Banner Preview
+                  </span>
+                  <div
+                    className="w-full py-2.5 px-4 rounded-xl border flex items-center justify-center gap-3 overflow-hidden text-xs sm:text-sm font-medium shadow-inner"
+                    style={{
+                      background: FESTIVE_ANNOUNCEMENTS[activeOccasion.id].gradient,
+                      borderColor: FESTIVE_ANNOUNCEMENTS[activeOccasion.id].borderColor,
+                      color: FESTIVE_ANNOUNCEMENTS[activeOccasion.id].textColor,
+                      fontFamily: FESTIVE_ANNOUNCEMENTS[activeOccasion.id].fontFamily,
+                    }}
+                  >
+                    <span className="text-base animate-bounce">
+                      {FESTIVE_ANNOUNCEMENTS[activeOccasion.id].icons[0] || "✨"}
+                    </span>
+                    <span className="truncate max-w-xl text-center">
+                      {(announcementText || FESTIVE_ANNOUNCEMENTS[activeOccasion.id].items.join(" | "))
+                        .split("|")[0]
+                        ?.trim() || `Happy ${activeOccasion.name}!`}
+                    </span>
+                    <span className="text-base animate-bounce">
+                      {FESTIVE_ANNOUNCEMENTS[activeOccasion.id].icons[1] ||
+                        FESTIVE_ANNOUNCEMENTS[activeOccasion.id].icons[0] ||
+                        "✨"}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Textarea */}
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
+                  Banner Text / Announcement Pipeline
+                </label>
+                <textarea
+                  rows={4}
+                  value={announcementText}
+                  onChange={(e) => setAnnouncementText(e.target.value)}
+                  placeholder={`e.g. Happy ${activeOccasion.name}! | Special Festive Offers Inside | Limited Time Deals`}
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all resize-none shadow-inner leading-relaxed"
+                />
+              </div>
+
+              {/* Save Button */}
+              <div className="flex items-center justify-between pt-1">
+                <p className="text-[11px] text-gray-400">
+                  Tip: Changes are instantly pushed live to the storefront marquee once saved.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => saveAnnouncement()}
+                  disabled={savingAnnouncement}
+                  className="px-6 py-2.5 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white rounded-xl text-xs font-bold tracking-wide uppercase shadow-md shadow-amber-600/20 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center gap-2"
+                >
+                  {savingAnnouncement ? (
+                    <>
+                      <svg className="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Saving Festive Banner...
+                    </>
+                  ) : (
+                    <>
+                      <span>💾</span>
+                      <span>Save Festive Banner</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4">
-            <p className="text-sm text-indigo-700 font-medium">
-              One click sets the theme, hero, footer, and every section's layout at once —
-              exactly what picking each individually would set. Everything stays editable
-              afterward from its own tab.
+            <p className="text-sm text-indigo-800 font-medium leading-relaxed">
+              Activate any festive occasion below to run its celebratory ambient animation (e.g. falling flower petals for Onam, sparkles for Diwali, gentle snow for Christmas/New Year, gulal for Holi, confetti for Sales) across your storefront. Your custom Hero Section template and theme remain completely untouched and intact.
             </p>
           </div>
 
@@ -2081,30 +2780,22 @@ export default function HomepageManager() {
                   <div className="p-4 bg-white">
                     <p className="text-xs text-gray-500 mb-4 leading-snug">{preset.description}</p>
                     {applied ? (
-                      <div className="flex gap-2">
-                        <button
-                          onClick={disableActiveOccasion}
-                          disabled={disablingOccasion || applyingPreset || !canBannerEdit}
-                          className="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wide bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
-                        >
-                          <XCircleIcon className="w-3.5 h-3.5 text-rose-600" />
-                          {disablingOccasion ? "Disabling…" : "Turn Off"}
-                        </button>
-                        <button
-                          onClick={() => openPresetConfirm(preset)}
-                          disabled={disablingOccasion || applyingPreset || !canBannerEdit}
-                          className="flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-wide bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors disabled:opacity-50"
-                        >
-                          ✓ Reapply
-                        </button>
-                      </div>
+                      <button
+                        onClick={disableActiveOccasion}
+                        disabled={disablingOccasion || applyingPreset || !canBannerEdit}
+                        className="w-full py-2.5 rounded-xl text-xs font-bold uppercase tracking-wide bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-sm"
+                      >
+                        <XCircleIcon className="w-4 h-4 text-rose-600" />
+                        {disablingOccasion ? "Turning Off..." : "Turn Off Animation"}
+                      </button>
                     ) : (
                       <button
-                        onClick={() => openPresetConfirm(preset)}
+                        onClick={() => applyOccasionPreset(preset)}
                         disabled={disablingOccasion || applyingPreset || !canBannerEdit}
-                        className="w-full py-2 rounded-lg text-xs font-bold uppercase tracking-wide bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        className="w-full py-2.5 rounded-xl text-xs font-bold uppercase tracking-wide bg-indigo-600 hover:bg-indigo-700 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm flex items-center justify-center gap-1.5"
                       >
-                        Apply {preset.name}
+                        <SparklesIcon className="w-4 h-4" />
+                        Activate {preset.name}
                       </button>
                     )}
                   </div>
@@ -2113,113 +2804,39 @@ export default function HomepageManager() {
             })}
           </div>
 
-          {confirmingPreset && presetCustomization && (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col">
-                <div className="p-6 pb-4 border-b border-gray-100">
-                  <h3 className="text-lg font-bold text-gray-900 mb-1">
-                    {confirmingPreset.emoji} {confirmingPreset.name}
-                  </h3>
-                  <p className="text-sm text-gray-500">
-                    Edit the wording below if you'd like — everything here (theme, hero,
-                    footer, and every section's layout) updates on the live storefront
-                    when you apply, and stays editable afterward from its own tab.
-                  </p>
-                </div>
 
-                <div className="p-6 space-y-4 overflow-y-auto">
-                  <div>
-                    <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Hero Title</label>
-                    <input
-                      className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                      value={presetCustomization.heroTitle}
-                      onChange={(e) => setPresetCustomization((p) => (p ? { ...p, heroTitle: e.target.value } : p))}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Hero Subtitle</label>
-                    <input
-                      className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                      value={presetCustomization.heroSubtitle}
-                      onChange={(e) => setPresetCustomization((p) => (p ? { ...p, heroSubtitle: e.target.value } : p))}
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Hero CTA Text</label>
-                      <input
-                        className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                        value={presetCustomization.heroCtaText}
-                        onChange={(e) => setPresetCustomization((p) => (p ? { ...p, heroCtaText: e.target.value } : p))}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Hero Eyebrow Text</label>
-                      <input
-                        className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                        value={presetCustomization.heroAccentText}
-                        onChange={(e) => setPresetCustomization((p) => (p ? { ...p, heroAccentText: e.target.value } : p))}
-                      />
-                    </div>
-                  </div>
-                  {presetCustomization.heroBadgeText && (
-                    <div>
-                      <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">
-                        Hero Badge (discount / label, two lines)
-                      </label>
-                      <textarea
-                        rows={2}
-                        className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
-                        value={presetCustomization.heroBadgeText}
-                        onChange={(e) => setPresetCustomization((p) => (p ? { ...p, heroBadgeText: e.target.value } : p))}
-                      />
-                    </div>
-                  )}
-                  <div>
-                    <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">
-                      Announcement Bar Text <span className="font-normal normal-case text-gray-400">(pipe-separated · admin only)</span>
-                    </label>
-                    <input
-                      className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                      value={presetCustomization.announcementText}
-                      onChange={(e) => setPresetCustomization((p) => (p ? { ...p, announcementText: e.target.value } : p))}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Footer Tagline</label>
-                    <input
-                      className="mt-1 w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                      value={presetCustomization.footerTagline}
-                      onChange={(e) => setPresetCustomization((p) => (p ? { ...p, footerTagline: e.target.value } : p))}
-                    />
-                  </div>
-                </div>
-
-                <div className="flex gap-3 p-6 pt-4 border-t border-gray-100">
-                  <button
-                    onClick={() => { setConfirmingPreset(null); setPresetCustomization(null); }}
-                    disabled={applyingPreset}
-                    className="flex-1 px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={() => applyOccasionPreset(confirmingPreset, presetCustomization)}
-                    disabled={applyingPreset}
-                    className="flex-1 px-4 py-2.5 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50"
-                  >
-                    {applyingPreset ? "Applying…" : "Apply"}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       )}
 
-      {/* ── ANNOUNCEMENT TAB ─────────────────────────────────────────────────── */}
+      {/* -¢------¬-¢------¬ ANNOUNCEMENT TAB -¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬ */}
       {activeTab === "ANNOUNCEMENT" && (
         <div className="space-y-6 animate-fadeIn">
+          {isOccasionActive && activeOccasion && (
+            <div className="bg-gradient-to-r from-amber-500/10 via-amber-50 to-orange-50/50 border border-amber-300 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+              <div className="flex items-center gap-3">
+                <span className="text-3xl">{activeOccasion.emoji}</span>
+                <div>
+                  <h4 className="text-sm font-bold text-amber-950 flex items-center gap-2">
+                    <span>{activeOccasion.name} Occasion is Active</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-amber-200 text-amber-900 border border-amber-300">
+                      Live Festive Marquee
+                    </span>
+                  </h4>
+                  <p className="text-xs text-amber-800 mt-0.5 max-w-xl">
+                    Your storefront is currently rendering the celebratory {activeOccasion.name} festive banner style. You can edit the festive messages directly below!
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveTab("OCCASIONS")}
+                className="text-xs font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 px-3.5 py-2 rounded-xl border border-amber-300/80 transition-colors shrink-0 self-start sm:self-center flex items-center gap-1.5 shadow-sm"
+              >
+                <span>{activeOccasion.emoji}</span>
+                <span>Open Festive Manager</span>
+              </button>
+            </div>
+          )}
 
           <div>
             <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3">Layout</h3>
@@ -2315,7 +2932,7 @@ export default function HomepageManager() {
         </div>
       )}
 
-      {/* â”€â”€ HERO TAB â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬ HERO TAB ---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬ */}
       {activeTab === "HERO" && (
         <div>
           <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 mb-6">
@@ -2328,11 +2945,11 @@ export default function HomepageManager() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-8">
-            {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((key) => {
+            {["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"].map((key) => {
               const label = HERO_TEMPLATE_LABELS[key];
               const isActive = String(heroConfig.activeTemplate) === key;
               const isEditing = editingHeroTemplate === key;
-              const isDarkStrip = key === "2" || key === "3" || key === "5" || key === "6" || key === "8" || key === "9";
+              const isDarkStrip = key === "2" || key === "3" || key === "5" || key === "6" || key === "8" || key === "9" || key === "10";
               return (
                 <div
                   key={key}
@@ -2358,8 +2975,10 @@ export default function HomepageManager() {
                                 : key === "7"
                                   ? "bg-gradient-to-r from-white to-gray-50 text-gray-700 border-b border-gray-100"
                                   : key === "8"
-                                    ? "bg-gradient-to-r from-neutral-950 to-neutral-800"
-                                    : "bg-gradient-to-r from-neutral-800 to-neutral-600"
+                                    ? "bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 text-white"
+                                    : key === "9"
+                                      ? "bg-gradient-to-r from-neutral-800 to-neutral-600"
+                                      : "bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white"
                       }`}
                   >
                     <div className="text-center px-3">
@@ -2391,91 +3010,156 @@ export default function HomepageManager() {
                         {isActive ? "Active" : "Set Active"}
                       </button>
                       <button
-                        onClick={() =>
+                        type="button"
+                        onClick={() => openHeroEdit(key)}
+                        className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border transition-colors flex items-center justify-center gap-1 cursor-pointer ${
                           isEditing
-                            ? setEditingHeroTemplate(null)
-                            : openHeroEdit(key)
-                        }
-                        className="flex-1 py-1.5 rounded-lg text-xs font-semibold bg-white border border-gray-300 text-gray-600 hover:border-indigo-400 hover:text-indigo-600 transition-colors flex items-center justify-center gap-1"
+                            ? "bg-indigo-50 text-indigo-700 border-indigo-300"
+                            : "bg-white text-gray-600 border-gray-300 hover:border-indigo-400 hover:text-indigo-600"
+                        }`}
                       >
                         <PencilSquareIcon className="w-3.5 h-3.5" />
-                        {isEditing ? "Cancel" : "Edit"}
+                        Edit
                       </button>
                     </div>
                   </div>
+                </div>
+              );
+            })}
+          </div>
 
-                  {/* Inline edit form */}
-                  {isEditing && (
-                    <div className="border-t border-gray-100 p-4 bg-gray-50 space-y-3">
-                      <div>
-                        <label className="text-xs font-semibold text-gray-600">
-                          Headline
-                        </label>
-                        <input
-                          className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                          value={heroForm.title}
-                          onChange={(e) =>
-                            setHeroForm((p) => ({
-                              ...p,
-                              title: e.target.value,
-                            }))
-                          }
-                          placeholder="Hero headline"
-                        />
+          {/* Hero Template Edit Modal */}
+          {editingHeroTemplate && (() => {
+            const key = editingHeroTemplate;
+            const label = HERO_TEMPLATE_LABELS[key];
+            return (
+              <div
+                className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn"
+                onClick={() => setEditingHeroTemplate(null)}
+              >
+                <div
+                  className="bg-white rounded-2xl max-w-3xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {/* Modal Header */}
+                  <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/80 sticky top-0 z-10">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
+                        <PencilSquareIcon className="w-4 h-4" />
                       </div>
-                      {key !== "5" && (
-                        <div>
-                          <label className="text-xs font-semibold text-gray-600">
-                            Subtitle / Description
-                          </label>
-                          <textarea
-                            rows={2}
-                            className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
-                            value={heroForm.subtitle}
-                            onChange={(e) =>
-                              setHeroForm((p) => ({
-                                ...p,
-                                subtitle: e.target.value,
-                              }))
-                            }
-                            placeholder="Supporting text below the headline"
-                          />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-sm font-bold text-slate-800 truncate">
+                            Edit Content — {label?.name || `Template ${key}`}
+                          </h3>
+                          <span className="text-[10px] font-bold text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-full shrink-0">
+                            Template {key}
+                          </span>
                         </div>
+                        <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                          {label?.desc}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setEditingHeroTemplate(null)}
+                      className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer shrink-0 ml-2"
+                      title="Close"
+                    >
+                      <XMarkIcon className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  {/* Modal Body - Scrollable */}
+                  <div className="p-5 space-y-4 overflow-y-auto flex-1">
+                      {key !== "6" && key !== "9" && key !== "10" && (
+                        <>
+                          <div>
+                            <label className="text-xs font-semibold text-gray-600">
+                              Headline{" "}
+                              <span className="font-normal text-gray-400">
+                                (optional — leave blank to hide)
+                              </span>
+                            </label>
+                            <input
+                              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                              value={heroForm.title ?? ""}
+                              onChange={(e) =>
+                                setHeroForm((p) => ({
+                                  ...p,
+                                  title: e.target.value,
+                                }))
+                              }
+                              placeholder="Hero headline (leave blank to hide)"
+                            />
+                          </div>
+                          {key !== "5" && (
+                            <div>
+                              <label className="text-xs font-semibold text-gray-600">
+                                Subtitle / Description{" "}
+                                <span className="font-normal text-gray-400">
+                                  (optional — leave blank to hide)
+                                </span>
+                              </label>
+                              <textarea
+                                rows={2}
+                                className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
+                                value={heroForm.subtitle ?? ""}
+                                onChange={(e) =>
+                                  setHeroForm((p) => ({
+                                    ...p,
+                                    subtitle: e.target.value,
+                                  }))
+                                }
+                                placeholder="Supporting text below the headline (leave blank to hide)"
+                              />
+                            </div>
+                          )}
+                          {key !== "8" && (
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="text-xs font-semibold text-gray-600">
+                                  CTA Button Text{" "}
+                                  <span className="font-normal text-gray-400">
+                                    (optional)
+                                  </span>
+                                </label>
+                                <input
+                                  className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                                  value={heroForm.ctaText ?? ""}
+                                  onChange={(e) =>
+                                    setHeroForm((p) => ({
+                                      ...p,
+                                      ctaText: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="e.g. Explore Now (leave blank to hide)"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-xs font-semibold text-gray-600">
+                                  CTA Link{" "}
+                                  <span className="font-normal text-gray-400">
+                                    (optional)
+                                  </span>
+                                </label>
+                                <input
+                                  className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                                  value={heroForm.ctaLink ?? ""}
+                                  onChange={(e) =>
+                                    setHeroForm((p) => ({
+                                      ...p,
+                                      ctaLink: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="/products"
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </>
                       )}
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="text-xs font-semibold text-gray-600">
-                            CTA Button Text
-                          </label>
-                          <input
-                            className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                            value={heroForm.ctaText}
-                            onChange={(e) =>
-                              setHeroForm((p) => ({
-                                ...p,
-                                ctaText: e.target.value,
-                              }))
-                            }
-                            placeholder="Shop Now"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-xs font-semibold text-gray-600">
-                            CTA Link
-                          </label>
-                          <input
-                            className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                            value={heroForm.ctaLink}
-                            onChange={(e) =>
-                              setHeroForm((p) => ({
-                                ...p,
-                                ctaLink: e.target.value,
-                              }))
-                            }
-                            placeholder="/products"
-                          />
-                        </div>
-                      </div>
                       {key === "1" && (
                         <div>
                           <label className="text-xs font-semibold text-gray-600">
@@ -2554,13 +3238,33 @@ export default function HomepageManager() {
                         </div>
                       )}
                       {key === "2" && (
-                        <div>
-                          <label className="text-xs font-semibold text-gray-600">
-                            Background Image{" "}
-                            <span className="font-normal text-gray-400">
-                              (leave blank for default)
-                            </span>
-                          </label>
+                        <>
+                          <div>
+                            <label className="text-xs font-semibold text-gray-600">
+                              Accent Label{" "}
+                              <span className="font-normal text-gray-400">
+                                (optional — small pill badge above headline, leave blank to hide)
+                              </span>
+                            </label>
+                            <input
+                              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                              value={heroForm.accentText ?? ""}
+                              onChange={(e) =>
+                                setHeroForm((p) => ({
+                                  ...p,
+                                  accentText: e.target.value,
+                                }))
+                              }
+                              placeholder="e.g. SS26 Collection (leave blank to hide)"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-gray-600">
+                              Full-Width Background Photo{" "}
+                              <span className="font-normal text-gray-400">
+                                (leave blank for default)
+                              </span>
+                            </label>
                           <div className="mt-1 flex gap-2">
                             <input
                               className="flex-1 min-w-0 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
@@ -2614,7 +3318,7 @@ export default function HomepageManager() {
                                   removeHeroBgImage();
                                 }}
                                 className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white text-[11px] font-medium px-2.5 py-1 rounded-lg shadow-md flex items-center gap-1 transition-colors z-10 cursor-pointer"
-                                title="Remove image from Cloudinary"
+                                title="Remove image"
                               >
                                 <TrashIcon className="w-3 h-3" />
                                 Remove
@@ -2622,14 +3326,15 @@ export default function HomepageManager() {
                             </div>
                           )}
                         </div>
-                      )}
+                      </>
+                    )}
                       {key === "3" && (
                         <>
                           <div>
                             <label className="text-xs font-semibold text-gray-600">
                               Accent Label{" "}
                               <span className="font-normal text-gray-400">
-                                (small text above headline)
+                                (optional — small text above headline, leave blank to hide)
                               </span>
                             </label>
                             <input
@@ -2641,7 +3346,7 @@ export default function HomepageManager() {
                                   accentText: e.target.value,
                                 }))
                               }
-                              placeholder="New Season"
+                              placeholder="e.g. New Season (leave blank to hide)"
                             />
                           </div>
                           <div>
@@ -2732,7 +3437,7 @@ export default function HomepageManager() {
                             <label className="text-xs font-semibold text-gray-600">
                               Accent Label{" "}
                               <span className="font-normal text-gray-400">
-                                (small text above headline)
+                                (optional — small text above headline, leave blank to hide)
                               </span>
                             </label>
                             <input
@@ -2744,7 +3449,7 @@ export default function HomepageManager() {
                                   accentText: e.target.value,
                                 }))
                               }
-                              placeholder="Trendy Collections"
+                              placeholder="e.g. Trendy Collections (leave blank to hide)"
                             />
                           </div>
                           <div>
@@ -2830,7 +3535,7 @@ export default function HomepageManager() {
                                     removeHeroBgImage();
                                   }}
                                   className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white text-[11px] font-medium px-2.5 py-1 rounded-lg shadow-md flex items-center gap-1 transition-colors z-10 cursor-pointer"
-                                  title="Remove image from Cloudinary"
+                                  title="Remove image"
                                 >
                                   <TrashIcon className="w-3 h-3" />
                                   Remove
@@ -2871,7 +3576,7 @@ export default function HomepageManager() {
                             <label className="text-xs font-semibold text-gray-600 block">
                               Top Accent Title{" "}
                               <span className="font-normal text-gray-400">
-                                (small text above headline)
+                                (optional — small text above headline, leave blank to hide)
                               </span>
                             </label>
                             <input
@@ -2883,7 +3588,7 @@ export default function HomepageManager() {
                                   accentText: e.target.value,
                                 }))
                               }
-                              placeholder="e.g., New Season"
+                              placeholder="e.g. New Season (leave blank to hide)"
                             />
                           </div>
                           <label className="text-xs font-semibold text-gray-600 block">
@@ -2973,177 +3678,635 @@ export default function HomepageManager() {
                         </div>
                       )}
                       {key === "6" && (
-                        <>
+                        <div className="space-y-4">
                           <div>
-                            <label className="text-xs font-semibold text-gray-600">
-                              Accent Label{" "}
-                              <span className="font-normal text-gray-400">
-                                (small text above headline)
-                              </span>
-                            </label>
-                            <input
-                              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                              value={heroForm.accentText ?? ""}
-                              onChange={(e) => setHeroForm((p) => ({ ...p, accentText: e.target.value }))}
-                              placeholder="Limited Time"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-xs font-semibold text-gray-600">
-                              Diagonal Photo{" "}
-                              <span className="font-normal text-gray-400">(leave blank for default)</span>
-                            </label>
-                            <div className="mt-1 flex gap-2">
-                              <input
-                                className="flex-1 min-w-0 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                                value={heroForm.bgImage ?? ""}
-                                onChange={(e) => setHeroForm((p) => ({ ...p, bgImage: e.target.value }))}
-                                placeholder="https://..."
-                              />
-                              <label className="flex-none cursor-pointer flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-300 text-xs text-gray-600 hover:border-indigo-400 hover:text-indigo-600 transition-colors bg-white whitespace-nowrap">
-                                {uploadingBgImage ? (
-                                  <>
-                                    <svg className="animate-spin h-3.5 w-3.5 text-indigo-600" fill="none" viewBox="0 0 24 24">
-                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                                    </svg>
-                                    <span>Uploading...</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <PhotoIcon className="w-3.5 h-3.5" />
-                                    <span>Upload</span>
-                                  </>
-                                )}
-                                <input
-                                  type="file"
-                                  accept="image/*"
-                                  className="sr-only"
-                                  onChange={(e) => {
-                                    const f = e.target.files?.[0];
-                                    if (f) uploadHeroBgImage(f);
-                                    e.target.value = "";
-                                  }}
-                                />
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="text-xs font-bold text-gray-700">
+                                3 Editorial Columns &amp; Labels
                               </label>
+                              <span className="text-[10px] text-gray-400">
+                                3 Split Banners
+                              </span>
                             </div>
-                            {heroForm.bgImage && (
-                              <div className="mt-2 min-h-[160px] max-h-72 w-full rounded-xl overflow-hidden border border-gray-200 bg-neutral-950 relative group flex items-center justify-center p-2.5 shadow-inner">
-                                <img src={heroForm.bgImage} alt="" className="max-h-64 w-auto h-auto object-contain rounded-lg shadow-md" />
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    removeHeroBgImage();
-                                  }}
-                                  className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white text-[11px] font-medium px-2.5 py-1 rounded-lg shadow-md flex items-center gap-1 transition-colors z-10 cursor-pointer"
-                                  title="Remove image from Cloudinary"
-                                >
-                                  <TrashIcon className="w-3 h-3" />
-                                  Remove
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                          <div>
-                            <label className="text-xs font-semibold text-gray-600">
-                              Floating Badge Text <span className="font-normal text-gray-400">(optional)</span>
-                            </label>
-                            <textarea
-                              rows={2}
-                              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none font-mono"
-                              value={heroForm.badgeText ?? ""}
-                              onChange={(e) => setHeroForm((p) => ({ ...p, badgeText: e.target.value }))}
-                              placeholder={"50%\nOFF SELECTED"}
-                            />
-                            <p className="text-[11px] text-gray-400 mt-0.5">
-                              First line = big text, second line = subtitle. Leave blank to hide the badge.
+                            <p className="text-[11px] text-gray-400 mb-3">
+                              Configure photo, title text link, destination URL, and bottom tag for each column.
                             </p>
+
+                            <div className="space-y-3.5">
+                              {[0, 1, 2].map((idx) => {
+                                const imgUrl = heroForm.images?.[idx] ?? "";
+                                const uploading = uploadingHeroImage === idx;
+                                const colTitle = idx === 0 ? "Column 1 (Left)" : idx === 1 ? "Column 2 (Center)" : "Column 3 (Right)";
+
+                                return (
+                                  <div
+                                    key={idx}
+                                    className="p-3.5 bg-white rounded-xl border border-gray-200 shadow-xs space-y-3 transition-all hover:border-gray-300"
+                                  >
+                                    <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+                                      <div className="flex items-center gap-2">
+                                        <span className="w-5 h-5 rounded-full bg-indigo-50 text-indigo-600 font-bold text-[11px] flex items-center justify-center border border-indigo-100">
+                                          {idx + 1}
+                                        </span>
+                                        <span className="text-xs font-bold text-gray-800">
+                                          {colTitle}
+                                        </span>
+                                      </div>
+                                      {imgUrl ? (
+                                        <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
+                                          Photo Loaded
+                                        </span>
+                                      ) : (
+                                        <span className="text-[10px] text-gray-400 font-normal">
+                                          Default Photo
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    <div className="flex flex-col sm:flex-row gap-3.5 items-start">
+                                      {/* Image Upload Box */}
+                                      <div className="w-full sm:w-28 flex-shrink-0">
+                                        <label className="relative block aspect-[4/3] sm:aspect-square sm:w-28 sm:h-28 rounded-xl overflow-hidden cursor-pointer border-2 border-dashed border-gray-200 hover:border-indigo-400 transition-all bg-gray-50/80 hover:bg-indigo-50/20 flex items-center justify-center group shadow-xs">
+                                          {imgUrl ? (
+                                            <>
+                                              <img
+                                                src={imgUrl}
+                                                alt=""
+                                                className="w-full h-full object-cover"
+                                              />
+                                              <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                                <span className="text-white text-[10px] font-bold px-2 py-1 rounded bg-black/60 backdrop-blur-xs">
+                                                  Replace
+                                                </span>
+                                              </div>
+                                              <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                  e.preventDefault();
+                                                  e.stopPropagation();
+                                                  removeHeroImage(idx);
+                                                }}
+                                                className="absolute top-1.5 right-1.5 bg-red-500 hover:bg-red-600 text-white w-5 h-5 rounded-full text-xs flex items-center justify-center z-10 leading-none shadow transition-transform hover:scale-110 cursor-pointer"
+                                                title="Remove photo"
+                                              >
+                                                ×
+                                              </button>
+                                            </>
+                                          ) : uploading ? (
+                                            <div className="flex flex-col items-center justify-center gap-1.5 p-2 text-center">
+                                              <svg className="animate-spin h-5 w-5 text-indigo-600" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                              </svg>
+                                              <span className="text-[10px] text-indigo-600 font-bold">Uploading...</span>
+                                            </div>
+                                          ) : (
+                                            <div className="text-center p-2">
+                                              <HeroPhotoIcon className="w-5 h-5 text-gray-400 group-hover:text-indigo-500 mx-auto transition-colors" />
+                                              <span className="text-[10px] font-semibold text-gray-500 group-hover:text-indigo-600 mt-1 block">
+                                                Upload Photo
+                                              </span>
+                                              <span className="text-[8px] text-gray-400 block mt-0.5">JPG, PNG, WEBP</span>
+                                            </div>
+                                          )}
+                                          <input
+                                            type="file"
+                                            accept="image/*"
+                                            className="sr-only"
+                                            onChange={(e) => {
+                                              const f = e.target.files?.[0];
+                                              if (f) uploadHeroImage(f, idx);
+                                              e.target.value = "";
+                                            }}
+                                          />
+                                        </label>
+                                      </div>
+
+                                      {/* Inputs Stack (Full Width, Spacious) */}
+                                      <div className="flex-1 w-full space-y-2 min-w-0">
+                                        {/* Title input */}
+                                        <div>
+                                          <label className="text-[11px] font-semibold text-gray-700 block mb-0.5">
+                                            Title / Text Link
+                                          </label>
+                                          <input
+                                            type="text"
+                                            value={heroForm.imageTitles?.[idx] ?? ""}
+                                            onChange={(e) => {
+                                              const titles = [...(heroForm.imageTitles ?? ["", "", ""])];
+                                              titles[idx] = e.target.value;
+                                              setHeroForm((p) => ({ ...p, imageTitles: titles }));
+                                            }}
+                                            placeholder={idx === 0 ? "Shop Chains" : idx === 1 ? "Shop Rings" : "SS26 Campaign: Out Now"}
+                                            className="w-full border border-gray-300 bg-white rounded-lg px-3 py-1.5 text-xs text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
+                                          />
+                                        </div>
+
+                                        {/* Link input */}
+                                        <div>
+                                          <label className="text-[11px] font-semibold text-gray-700 block mb-0.5">
+                                            Destination Link
+                                          </label>
+                                          <input
+                                            type="text"
+                                            value={heroForm.imageLinks?.[idx] ?? ""}
+                                            onChange={(e) => {
+                                              const links = [...(heroForm.imageLinks ?? ["", "", ""])];
+                                              links[idx] = e.target.value;
+                                              setHeroForm((p) => ({ ...p, imageLinks: links }));
+                                            }}
+                                            placeholder="/products"
+                                            className="w-full border border-gray-300 bg-white rounded-lg px-3 py-1.5 text-xs text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors font-mono text-[11px]"
+                                          />
+                                        </div>
+
+                                        {/* Subtitle input */}
+                                        <div>
+                                          <label className="text-[11px] font-semibold text-gray-700 block mb-0.5">
+                                            Bottom Tag / Caption
+                                          </label>
+                                          <input
+                                            type="text"
+                                            value={heroForm.imageSubtitles?.[idx] ?? ""}
+                                            onChange={(e) => {
+                                              const subs = [...(heroForm.imageSubtitles ?? ["", "", ""])];
+                                              subs[idx] = e.target.value;
+                                              setHeroForm((p) => ({ ...p, imageSubtitles: subs }));
+                                            }}
+                                            placeholder={idx === 2 ? "SOURCE MATERIAL" : "Optional (e.g. NEW DROP)"}
+                                            className="w-full border border-gray-300 bg-white rounded-lg px-3 py-1.5 text-xs text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
+                                          />
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
                           </div>
-                        </>
+                        </div>
                       )}
                       {key === "7" && (
                         <div>
                           <label className="text-xs font-semibold text-gray-600">
                             Accent Label{" "}
                             <span className="font-normal text-gray-400">
-                              (small text above headline — also used as the giant faded
-                              background watermark if set)
+                              (optional — small text above headline, leave blank to hide)
                             </span>
                           </label>
                           <input
                             className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                             value={heroForm.accentText ?? ""}
                             onChange={(e) => setHeroForm((p) => ({ ...p, accentText: e.target.value }))}
-                            placeholder="The Collection"
+                            placeholder="e.g. The Collection (leave blank to hide)"
                           />
-                          <p className="text-[11px] text-gray-400 mt-0.5">
-                            Leave blank and the watermark falls back to the first word of the headline.
-                          </p>
                         </div>
                       )}
                       {key === "8" && (
-                        <>
+                        <div className="space-y-3.5">
                           <div>
-                            <label className="text-xs font-semibold text-gray-600">
-                              Accent Label{" "}
-                              <span className="font-normal text-gray-400">
-                                (small text above headline)
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="text-xs font-bold text-gray-700">
+                                Gallery Arc Images
+                              </label>
+                              <span className="text-[10px] text-gray-400">
+                                7 Slots • 3D Curved Ribbon
                               </span>
-                            </label>
-                            <input
-                              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                              value={heroForm.accentText ?? ""}
-                              onChange={(e) => setHeroForm((p) => ({ ...p, accentText: e.target.value }))}
-                              placeholder="Sale Ends Soon"
-                            />
+                            </div>
+                            <p className="text-[11px] text-gray-400 mb-3">
+                              Upload photos for the 7 arc positions. Slot 4 sits in the front center. Leave empty to use defaults.
+                            </p>
+
+                            <div className="grid grid-cols-2 gap-3">
+                              {[0, 1, 2, 3, 4, 5, 6].map((i) => {
+                                const imgUrl = heroForm.images?.[i] ?? "";
+                                const uploading = uploadingHeroImage === i;
+                                const isCenter = i === 3;
+                                const slotLabels = [
+                                  "Far Left",
+                                  "Left",
+                                  "Mid-Left",
+                                  "Center (Hero)",
+                                  "Mid-Right",
+                                  "Right",
+                                  "Far Right",
+                                ];
+
+                                return (
+                                  <div
+                                    key={i}
+                                    className={`relative flex flex-col bg-white rounded-xl border p-2.5 shadow-xs transition-all ${
+                                      isCenter
+                                        ? "border-indigo-400 ring-2 ring-indigo-50 bg-indigo-50/20"
+                                        : "border-gray-200 hover:border-gray-300"
+                                    }`}
+                                  >
+                                    <div className="flex items-center justify-between mb-2">
+                                      <div className="flex items-center gap-1.5 min-w-0">
+                                        <span
+                                          className={`w-4 h-4 rounded-full font-bold text-[10px] flex items-center justify-center shrink-0 ${
+                                            isCenter
+                                              ? "bg-indigo-600 text-white"
+                                              : "bg-gray-100 text-gray-700"
+                                          }`}
+                                        >
+                                          {i + 1}
+                                        </span>
+                                        <span
+                                          className={`text-[11px] font-bold truncate ${
+                                            isCenter ? "text-indigo-700" : "text-gray-800"
+                                          }`}
+                                        >
+                                          {slotLabels[i]}
+                                        </span>
+                                      </div>
+                                      {isCenter && (
+                                        <span className="text-[8px] font-bold bg-indigo-600 text-white px-1.5 py-0.5 rounded-full shrink-0 uppercase tracking-wider">
+                                          Center
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    <label className="relative aspect-[3/4] w-full rounded-lg overflow-hidden cursor-pointer border-2 border-dashed border-gray-200 hover:border-indigo-400 transition-all bg-gray-50/80 hover:bg-indigo-50/20 flex items-center justify-center group shadow-2xs">
+                                      {imgUrl ? (
+                                        <>
+                                          <img
+                                            src={imgUrl}
+                                            alt={slotLabels[i]}
+                                            className="w-full h-full object-cover"
+                                          />
+                                          <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                            <span className="text-white text-[10px] font-bold px-2 py-1 rounded bg-black/60 backdrop-blur-xs">
+                                              Replace
+                                            </span>
+                                          </div>
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.preventDefault();
+                                              e.stopPropagation();
+                                              removeHeroImage(i);
+                                            }}
+                                            className="absolute top-1.5 right-1.5 bg-red-500 hover:bg-red-600 text-white w-5 h-5 rounded-full text-xs flex items-center justify-center z-10 leading-none shadow transition-transform hover:scale-110 cursor-pointer"
+                                            title="Remove photo"
+                                          >
+                                            ×
+                                          </button>
+                                        </>
+                                      ) : uploading ? (
+                                        <div className="flex flex-col items-center justify-center gap-1 p-2 text-center">
+                                          <svg
+                                            className="animate-spin h-5 w-5 text-indigo-600"
+                                            fill="none"
+                                            viewBox="0 0 24 24"
+                                          >
+                                            <circle
+                                              className="opacity-25"
+                                              cx="12"
+                                              cy="12"
+                                              r="10"
+                                              stroke="currentColor"
+                                              strokeWidth="4"
+                                            />
+                                            <path
+                                              className="opacity-75"
+                                              fill="currentColor"
+                                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                            />
+                                          </svg>
+                                          <span className="text-[9px] text-indigo-600 font-bold">
+                                            Uploading
+                                          </span>
+                                        </div>
+                                      ) : (
+                                        <div className="text-center p-2">
+                                          <HeroPhotoIcon className="w-5 h-5 text-gray-400 group-hover:text-indigo-500 mx-auto transition-colors" />
+                                          <span className="text-[10px] font-semibold text-gray-500 group-hover:text-indigo-600 mt-1 block">
+                                            Upload
+                                          </span>
+                                        </div>
+                                      )}
+                                      <input
+                                        type="file"
+                                        accept="image/*"
+                                        className="sr-only"
+                                        onChange={(e) => {
+                                          const f = e.target.files?.[0];
+                                          if (f) uploadHeroImage(f, i);
+                                          e.target.value = "";
+                                        }}
+                                      />
+                                    </label>
+                                  </div>
+                                );
+                              })}
+                            </div>
                           </div>
+
+                          {/* Direct Image URL input dropdown */}
+                          <details className="mt-2 text-xs text-gray-500">
+                            <summary className="cursor-pointer hover:text-indigo-600 font-medium select-none text-[11px] py-1">
+                              Or paste direct image URLs...
+                            </summary>
+                            <div className="grid grid-cols-1 gap-2 mt-2 pt-2 border-t border-gray-100">
+                              {[0, 1, 2, 3, 4, 5, 6].map((idx) => (
+                                <div key={idx} className="flex items-center gap-1.5">
+                                  <span className="text-[10px] font-bold text-gray-400 w-14 shrink-0">
+                                    Slot {idx + 1}:
+                                  </span>
+                                  <input
+                                    type="text"
+                                    value={heroForm.images?.[idx] ?? ""}
+                                    onChange={(e) => {
+                                      const imgs = [
+                                        ...(heroForm.images ?? ["", "", "", "", "", "", ""]),
+                                      ];
+                                      imgs[idx] = e.target.value;
+                                      setHeroForm((p) => ({ ...p, images: imgs }));
+                                    }}
+                                    placeholder="https://..."
+                                    className="w-full border border-gray-200 rounded-lg px-2.5 py-1 text-[11px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-indigo-400 bg-white"
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          </details>
+                        </div>
+                      )}
+                      {key === "9" && (
+                        <div className="space-y-4">
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="text-xs font-bold text-gray-700">
+                                5 Carousel Banner Images
+                              </label>
+                              <span className="text-[10px] text-gray-400">
+                                Auto-rotates (5s)
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-gray-400 mb-3">
+                              Upload or paste image URLs for your banner slides (up to 5). If you add 3, only 3 will be shown. If you add 1, only that 1 will be shown. Empty slots are not displayed.
+                            </p>
+
+                            {/* Recommended Dimensions Banner Card */}
+                            <div className="mb-4 p-3.5 bg-indigo-50/70 border border-indigo-100 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-indigo-950">
+                              <div className="space-y-0.5">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-bold uppercase tracking-wider text-indigo-700">Recommended Dimensions</span>
+                                  <span className="bg-indigo-600 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full">2.65 : 1 Ratio</span>
+                                </div>
+                                <p className="text-xs text-indigo-800">
+                                  <strong>1920 × 720 px</strong> (Desktop) • <strong>1280 × 580 px</strong> (Tablet) • <strong>800 × 450 px</strong> (Mobile 16:9)
+                                </p>
+                              </div>
+                              <div className="text-[11px] font-medium text-indigo-600 bg-white px-2.5 py-1 rounded-lg border border-indigo-200 shrink-0 self-start sm:self-auto">
+                                Auto Carousel (5s) • Rounded Widescreen
+                              </div>
+                            </div>
+
+                            <div className="space-y-3.5">
+                              {[0, 1, 2, 3, 4].map((idx) => {
+                                const imgUrl = heroForm.images?.[idx] ?? "";
+                                const uploading = uploadingHeroImage === idx;
+
+                                return (
+                                  <div
+                                    key={idx}
+                                    className="p-3.5 bg-white rounded-xl border border-gray-200 shadow-xs space-y-3 transition-all hover:border-gray-300"
+                                  >
+                                    <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+                                      <div className="flex items-center gap-2">
+                                        <span className="w-5 h-5 rounded-full bg-indigo-50 text-indigo-600 font-bold text-[11px] flex items-center justify-center border border-indigo-100">
+                                          {idx + 1}
+                                        </span>
+                                        <span className="text-xs font-bold text-gray-800">
+                                          Banner Slide {idx + 1}
+                                        </span>
+                                      </div>
+                                      {imgUrl ? (
+                                        <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
+                                          Custom Photo
+                                        </span>
+                                      ) : (
+                                        <span className="text-[10px] text-gray-400 font-normal">
+                                          Empty (omitted)
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    <div className="flex flex-col sm:flex-row gap-3.5 items-start">
+                                      {/* Image Upload / Preview Box (Referral 2.65:1 Aspect Ratio) */}
+                                      <div className="w-full sm:w-44 flex-shrink-0">
+                                        <label className="relative block aspect-[2.65/1] sm:w-44 rounded-xl overflow-hidden cursor-pointer border-2 border-dashed border-gray-200 hover:border-indigo-400 transition-all bg-gray-50/80 hover:bg-indigo-50/20 flex items-center justify-center group shadow-xs">
+                                          {imgUrl ? (
+                                            <>
+                                              <img
+                                                src={imgUrl}
+                                                alt={`Banner ${idx + 1}`}
+                                                className="w-full h-full object-cover"
+                                              />
+                                              <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                                <span className="text-white text-[10px] font-bold px-2 py-1 rounded bg-black/60 backdrop-blur-xs">
+                                                  Replace
+                                                </span>
+                                              </div>
+                                              <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                  e.preventDefault();
+                                                  e.stopPropagation();
+                                                  removeHeroImage(idx);
+                                                }}
+                                                className="absolute top-1.5 right-1.5 bg-red-500 hover:bg-red-600 text-white w-5 h-5 rounded-full text-xs flex items-center justify-center z-10 leading-none shadow transition-transform hover:scale-110 cursor-pointer"
+                                                title="Remove banner"
+                                              >
+                                                ×
+                                              </button>
+                                            </>
+                                          ) : uploading ? (
+                                            <div className="flex flex-col items-center justify-center gap-1.5 p-2 text-center">
+                                              <svg className="animate-spin h-5 w-5 text-indigo-600" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                              </svg>
+                                              <span className="text-[10px] text-indigo-600 font-bold">Uploading...</span>
+                                            </div>
+                                          ) : (
+                                            <div className="text-center p-2">
+                                              <PhotoIcon className="w-5 h-5 text-gray-400 group-hover:text-indigo-500 mx-auto transition-colors" />
+                                              <span className="text-[10px] font-semibold text-gray-500 group-hover:text-indigo-600 mt-1 block">
+                                                Upload Banner
+                                              </span>
+                                              <span className="text-[8px] text-gray-400 block mt-0.5 font-medium">2.65:1 (1920 × 720 px)</span>
+                                            </div>
+                                          )}
+                                          <input
+                                            type="file"
+                                            accept="image/*"
+                                            className="sr-only"
+                                            onChange={(e) => {
+                                              const f = e.target.files?.[0];
+                                              if (f) uploadHeroImage(f, idx);
+                                              e.target.value = "";
+                                            }}
+                                          />
+                                        </label>
+                                      </div>
+
+                                      {/* Direct Image URL & Optional Destination Link */}
+                                      <div className="flex-1 w-full space-y-2 min-w-0">
+                                        <div>
+                                          <label className="text-[11px] font-semibold text-gray-700 block mb-1">
+                                            Direct Image URL
+                                          </label>
+                                          <input
+                                            type="text"
+                                            value={heroForm.images?.[idx] ?? ""}
+                                            onChange={(e) => {
+                                              const imgs = [...(heroForm.images ?? ["", "", "", "", ""])];
+                                              imgs[idx] = e.target.value;
+                                              setHeroForm((p) => ({ ...p, images: imgs }));
+                                            }}
+                                            placeholder="https://... (or upload photo on the left)"
+                                            className="w-full border border-gray-300 bg-white rounded-lg px-3 py-1.5 text-xs text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors font-mono text-[11px]"
+                                          />
+                                        </div>
+
+                                        <div>
+                                          <label className="text-[11px] font-semibold text-gray-700 block mb-1">
+                                            Slide Destination Link (Optional)
+                                          </label>
+                                          <input
+                                            type="text"
+                                            value={heroForm.imageLinks?.[idx] ?? ""}
+                                            onChange={(e) => {
+                                              const links = [...(heroForm.imageLinks ?? ["", "", "", "", ""])];
+                                              links[idx] = e.target.value;
+                                              setHeroForm((p) => ({ ...p, imageLinks: links }));
+                                            }}
+                                            placeholder="/products or /categories/sarees or https://..."
+                                            className="w-full border border-gray-300 bg-white rounded-lg px-3 py-1.5 text-xs text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors text-[11px]"
+                                          />
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      {key === "10" && (
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                              <label className="text-xs font-semibold text-gray-600">
+                                Main Headline (Serif Font)
+                              </label>
+                              <input
+                                className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                                value={heroForm.title ?? ""}
+                                onChange={(e) =>
+                                  setHeroForm((p) => ({
+                                    ...p,
+                                    title: e.target.value,
+                                  }))
+                                }
+                                placeholder="Festive"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs font-semibold text-gray-600">
+                                Script Accent Word (Cursive Font)
+                              </label>
+                              <input
+                                className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 font-serif italic"
+                                value={heroForm.highlightText ?? ""}
+                                onChange={(e) =>
+                                  setHeroForm((p) => ({
+                                    ...p,
+                                    highlightText: e.target.value,
+                                  }))
+                                }
+                                placeholder="Sale"
+                              />
+                            </div>
+                          </div>
+
                           <div>
                             <label className="text-xs font-semibold text-gray-600">
-                              Discount Numeral{" "}
+                              Offer Subtitle Lines{" "}
                               <span className="font-normal text-gray-400">
-                                (the giant number — this IS the hero's main visual)
+                                (press enter for new line)
                               </span>
                             </label>
                             <textarea
                               rows={2}
-                              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none font-mono"
-                              value={heroForm.badgeText ?? ""}
-                              onChange={(e) => setHeroForm((p) => ({ ...p, badgeText: e.target.value }))}
-                              placeholder={"70%\nOFF"}
+                              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none font-serif"
+                              value={heroForm.subtitle ?? ""}
+                              onChange={(e) =>
+                                setHeroForm((p) => ({
+                                  ...p,
+                                  subtitle: e.target.value,
+                                }))
+                              }
+                              placeholder={"Flat 50% OFF +\nExtra Rs.1000/- OFF"}
                             />
-                            <p className="text-[11px] text-gray-400 mt-0.5">
-                              First line = the giant number, second line = the label beneath it.
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                              <label className="text-xs font-semibold text-gray-600">
+                                Button Text
+                              </label>
+                              <input
+                                className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 uppercase text-xs tracking-wider"
+                                value={heroForm.ctaText ?? ""}
+                                onChange={(e) =>
+                                  setHeroForm((p) => ({
+                                    ...p,
+                                    ctaText: e.target.value,
+                                  }))
+                                }
+                                placeholder="Explore More"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs font-semibold text-gray-600">
+                                Button Destination Link
+                              </label>
+                              <input
+                                className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                                value={heroForm.ctaLink ?? ""}
+                                onChange={(e) =>
+                                  setHeroForm((p) => ({
+                                    ...p,
+                                    ctaLink: e.target.value,
+                                  }))
+                                }
+                                placeholder="/products"
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="text-xs font-semibold text-gray-600 block mb-1">
+                              Background Banner Photo
+                            </label>
+                            <p className="text-[11px] text-gray-500 mb-2">
+                              Upload a background image or paste an image URL. Recommended: <strong>1920 × 400 px</strong> (Half-Height Compact Banner).
                             </p>
-                          </div>
-                        </>
-                      )}
-                      {key === "9" && (
-                        <>
-                          <div>
-                            <label className="text-xs font-semibold text-gray-600">
-                              Accent Label{" "}
-                              <span className="font-normal text-gray-400">
-                                (small text above headline)
-                              </span>
-                            </label>
-                            <input
-                              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                              value={heroForm.accentText ?? ""}
-                              onChange={(e) => setHeroForm((p) => ({ ...p, accentText: e.target.value }))}
-                              placeholder="New In"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-xs font-semibold text-gray-600">
-                              Full-bleed Background Photo{" "}
-                              <span className="font-normal text-gray-400">(leave blank for default)</span>
-                            </label>
-                            <div className="mt-1 flex gap-2">
+                            <div className="flex gap-2">
                               <input
                                 className="flex-1 min-w-0 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                                 value={heroForm.bgImage ?? ""}
-                                onChange={(e) => setHeroForm((p) => ({ ...p, bgImage: e.target.value }))}
+                                onChange={(e) =>
+                                  setHeroForm((p) => ({
+                                    ...p,
+                                    bgImage: e.target.value,
+                                  }))
+                                }
                                 placeholder="https://..."
                               />
                               <label className="flex-none cursor-pointer flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-300 text-xs text-gray-600 hover:border-indigo-400 hover:text-indigo-600 transition-colors bg-white whitespace-nowrap">
@@ -3173,17 +4336,22 @@ export default function HomepageManager() {
                                 />
                               </label>
                             </div>
+
                             {heroForm.bgImage && (
-                              <div className="mt-2 min-h-[160px] max-h-72 w-full rounded-xl overflow-hidden border border-gray-200 bg-neutral-950 relative group flex items-center justify-center p-2.5 shadow-inner">
-                                <img src={heroForm.bgImage} alt="" className="max-h-64 w-auto h-auto object-contain rounded-lg shadow-md" />
+                              <div className="mt-2 w-full rounded-xl overflow-hidden border border-gray-200 bg-neutral-950 relative group p-2 shadow-inner">
+                                <img
+                                  src={heroForm.bgImage}
+                                  alt=""
+                                  className="w-full h-auto max-h-64 object-contain rounded-lg"
+                                />
                                 <button
                                   type="button"
                                   onClick={(e) => {
                                     e.preventDefault();
                                     removeHeroBgImage();
                                   }}
-                                  className="absolute top-2 right-2 bg-red-500 hover:bg-red-600 text-white text-[11px] font-medium px-2.5 py-1 rounded-lg shadow-md flex items-center gap-1 transition-colors z-10 cursor-pointer"
-                                  title="Remove image from Cloudinary"
+                                  className="absolute top-3 right-3 bg-red-500 hover:bg-red-600 text-white text-[11px] font-medium px-2.5 py-1 rounded-lg shadow-md flex items-center gap-1 transition-colors z-10 cursor-pointer"
+                                  title="Remove image"
                                 >
                                   <TrashIcon className="w-3 h-3" />
                                   Remove
@@ -3191,25 +4359,46 @@ export default function HomepageManager() {
                               </div>
                             )}
                           </div>
-                        </>
+                        </div>
                       )}
-                      <button
-                        onClick={() => saveHeroTemplate()}
-                        disabled={savingHero}
-                        className="w-full py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
-                      >
-                        {savingHero ? "Saving..." : "Save Template"}
-                      </button>
-                    </div>
-                  )}
+                  </div>
+
+                  {/* Modal Footer */}
+                  <div className="px-5 py-3 border-t border-slate-100 bg-slate-50/80 flex items-center justify-end gap-2.5 sticky bottom-0 z-10">
+                    <button
+                      type="button"
+                      onClick={() => setEditingHeroTemplate(null)}
+                      className="px-4 py-2 text-xs font-semibold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-colors cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => saveHeroTemplate()}
+                      disabled={savingHero}
+                      className="px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-xl shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
+                    >
+                      {savingHero ? (
+                        <>
+                          <svg className="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                          </svg>
+                          <span>Saving...</span>
+                        </>
+                      ) : (
+                        "Save Template"
+                      )}
+                    </button>
+                  </div>
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 
-      {/* ── HEADER TAB ─────────────────────────────────────────────────── */}
+      {/* -¢------¬-¢------¬ HEADER TAB -¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬ */}
       {activeTab === "HEADER" && (
         <div className="space-y-6 animate-fadeIn">
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
@@ -3222,6 +4411,10 @@ export default function HomepageManager() {
             {(["1", "2", "3", "4", "5", "6"] as const).map((key) => {
               const label = NAVBAR_TEMPLATE_LABELS[key];
               const isActive = String(navbarConfig.activeTemplate) === key;
+              const isEditing = editingNavbarTemplate === key;
+              const customBg = navbarConfig.templates?.[key]?.bgColor;
+              const customText = navbarConfig.templates?.[key]?.textColor;
+
               return (
                 <div
                   key={key}
@@ -3232,50 +4425,90 @@ export default function HomepageManager() {
                   }`}
                 >
                   {/* Visual Preview Strip */}
-                  <div className="h-28 flex flex-col justify-center px-4 relative overflow-hidden select-none border-b border-gray-100">
+                  <div
+                    className="h-28 flex flex-col justify-center px-4 relative overflow-hidden select-none border-b border-gray-100 transition-colors"
+                    style={{
+                      backgroundColor: customBg ? `${customBg}15` : undefined,
+                    }}
+                  >
+                    {(customBg || customText) && (
+                      <span className="absolute top-2 right-2 text-[9px] px-1.5 py-0.5 rounded font-semibold bg-black/40 text-white backdrop-blur-xs z-20">
+                        Custom Colors
+                      </span>
+                    )}
+
                     {key === "1" && (
-                      <div className="w-full bg-[#0a0a0a] text-white rounded-lg p-2.5 border border-white/10 shadow-xs flex items-center justify-between h-20">
+                      <div
+                        className="w-full bg-[#0a0a0a] text-white rounded-lg p-2.5 border border-white/10 shadow-xs flex items-center justify-between h-20"
+                        style={{
+                          backgroundColor: customBg || undefined,
+                          color: customText || undefined,
+                          borderColor: customText ? `${customText}25` : undefined,
+                        }}
+                      >
                         <div className="flex items-center gap-1.5">
                           <div className="w-4 h-4 rounded-md bg-[var(--theme-primary,#C9A227)] text-[8px] font-black text-[var(--theme-primary-ink,#0B0B0C)] flex items-center justify-center">
                             A
                           </div>
-                          <div className="h-2 w-8 bg-white rounded-xs" />
+                          <div className="h-2 w-8 rounded-xs" style={{ backgroundColor: customText || "#ffffff" }} />
                         </div>
                         <div className="flex items-center gap-1">
                           <span className="px-2 py-0.5 bg-[var(--theme-primary,#C9A227)] text-[8px] text-[var(--theme-primary-ink,#0B0B0C)] font-bold rounded-md shadow-xs">
                             Home
                           </span>
-                          <span className="px-1.5 py-0.5 text-[8px] text-zinc-400">
+                          <span
+                            className="px-1.5 py-0.5 text-[8px]"
+                            style={{ color: customText || "rgb(161 161 170)" }}
+                          >
                             Products
                           </span>
                         </div>
                         <div className="flex items-center gap-1">
-                          <div className="w-3.5 h-3.5 rounded-full border border-white/20 flex items-center justify-center" />
+                          <div
+                            className="w-3.5 h-3.5 rounded-full border flex items-center justify-center"
+                            style={{ borderColor: customText ? `${customText}40` : "rgba(255,255,255,0.2)" }}
+                          />
                           <div className="w-3.5 h-3.5 rounded-full bg-[var(--theme-primary,#C9A227)] text-[var(--theme-primary-ink,#0B0B0C)]" />
                         </div>
                       </div>
                     )}
 
                     {key === "2" && (
-                      <div className="w-full bg-gray-50 rounded-lg p-2.5 border border-gray-200 shadow-xs flex items-center justify-between h-20 text-gray-900">
+                      <div
+                        className="w-full bg-gray-50 rounded-lg p-2.5 border border-gray-200 shadow-xs flex items-center justify-between h-20 text-gray-900"
+                        style={{
+                          backgroundColor: customBg || undefined,
+                          color: customText || undefined,
+                          borderColor: customText ? `${customText}25` : undefined,
+                        }}
+                      >
                         <div className="flex items-center gap-1.5">
-                          <div className="w-4 h-4 rounded-md bg-gray-900 text-[8px] font-bold text-white flex items-center justify-center">
+                          <div
+                            className="w-4 h-4 rounded-md text-[8px] font-bold flex items-center justify-center"
+                            style={{
+                              backgroundColor: customText || "#111827",
+                              color: customBg || "#ffffff",
+                            }}
+                          >
                             A
                           </div>
-                          <div className="h-2.5 w-10 bg-gray-900 rounded-xs" />
+                          <div className="h-2.5 w-10 rounded-xs" style={{ backgroundColor: customText || "#111827" }} />
                         </div>
                         <div className="flex items-center gap-2 text-[8px] uppercase tracking-wider font-semibold">
                           <div className="flex flex-col items-center">
-                            <span className="font-bold text-gray-900">
+                            <span className="font-bold" style={{ color: customText || undefined }}>
                               Home
                             </span>
                             <span className="w-2.5 h-[2px] bg-[var(--theme-primary,#C9A227)] rounded-full mt-0.5" />
                           </div>
-                          <span className="text-gray-400">Shop</span>
-                          <span className="text-gray-400">Story</span>
+                          <span style={{ color: customText ? `${customText}99` : "rgb(156 163 175)" }}>Shop</span>
+                          <span style={{ color: customText ? `${customText}99` : "rgb(156 163 175)" }}>Story</span>
                         </div>
                         <div className="flex items-center gap-1">
-                          <div className="w-4 h-4 border border-gray-300 rounded-md" />
+                          <div
+                            className="w-4 h-4 border rounded-md"
+                            style={{ borderColor: customText ? `${customText}40` : "rgb(209 213 219)" }}
+                          />
                           <div className="px-2 py-0.5 bg-[var(--theme-primary,#C9A227)] text-[var(--theme-primary-ink,#0B0B0C)] text-[7px] font-bold rounded-md uppercase shadow-xs">
                             Sign In
                           </div>
@@ -3284,88 +4517,195 @@ export default function HomepageManager() {
                     )}
 
                     {key === "3" && (
-                      <div className="w-full bg-gradient-to-r from-indigo-950 via-slate-900 to-gray-950 text-white rounded-lg p-2.5 border border-indigo-500/30 shadow-xs flex items-center justify-between h-20">
+                      <div
+                        className="w-full bg-gradient-to-r from-indigo-950 via-slate-900 to-gray-950 text-white rounded-lg p-2.5 border border-indigo-500/30 shadow-xs flex items-center justify-between h-20"
+                        style={{
+                          backgroundColor: customBg || undefined,
+                          color: customText || undefined,
+                          borderColor: customText ? `${customText}25` : undefined,
+                        }}
+                      >
                         <div className="flex items-center gap-1.5">
                           <div className="w-4 h-4 rounded-full bg-indigo-500 text-[8px] font-bold text-white flex items-center justify-center shadow-[0_0_8px_rgba(99,102,241,0.6)]">
                             A
                           </div>
-                          <div className="h-2 w-8 bg-indigo-200 rounded-xs" />
+                          <div className="h-2 w-8 rounded-xs" style={{ backgroundColor: customText || "#c7d2fe" }} />
                         </div>
                         <div className="flex items-center gap-1">
                           <span className="px-2 py-0.5 bg-gradient-to-r from-indigo-600 to-indigo-500 text-[8px] text-white font-bold rounded-full shadow-[0_0_8px_rgba(99,102,241,0.4)]">
                             Home
                           </span>
-                          <span className="px-1.5 py-0.5 text-[8px] text-indigo-300">
+                          <span
+                            className="px-1.5 py-0.5 text-[8px]"
+                            style={{ color: customText || "#a5b4fc" }}
+                          >
                             Explore
                           </span>
                         </div>
                         <div className="flex items-center gap-1">
-                          <div className="h-3 w-8 bg-white/10 border border-white/20 rounded-full" />
+                          <div
+                            className="h-3 w-8 border rounded-full"
+                            style={{
+                              backgroundColor: customText ? `${customText}15` : "rgba(255,255,255,0.1)",
+                              borderColor: customText ? `${customText}30` : "rgba(255,255,255,0.2)",
+                            }}
+                          />
                           <div className="w-3.5 h-3.5 rounded-full bg-indigo-500/80" />
                         </div>
                       </div>
                     )}
 
                     {key === "4" && (
-                      <div className="w-full bg-white rounded-lg p-2.5 border border-gray-100 shadow-xs flex items-center justify-between h-20 text-gray-900">
-                        <div className="flex items-center gap-1.5 text-[7px] uppercase tracking-widest font-medium text-gray-400">
-                          <span className="text-black font-bold">Home</span>
+                      <div
+                        className="w-full bg-white rounded-lg p-2.5 border border-gray-100 shadow-xs flex items-center justify-between h-20 text-gray-900"
+                        style={{
+                          backgroundColor: customBg || undefined,
+                          color: customText || undefined,
+                          borderColor: customText ? `${customText}25` : undefined,
+                        }}
+                      >
+                        <div className="flex items-center gap-1.5 text-[7px] uppercase tracking-widest font-medium" style={{ color: customText ? `${customText}99` : "rgb(156 163 175)" }}>
+                          <span className="font-bold" style={{ color: customText || "#000000" }}>Home</span>
                           <span>Shop</span>
                         </div>
                         <div className="text-center">
-                          <div className="text-[10px] font-black tracking-widest uppercase font-serif text-gray-900">
+                          <div
+                            className="text-[10px] font-black tracking-widest uppercase font-serif"
+                            style={{ color: customText || "#111827" }}
+                          >
                             AMORE
                           </div>
                         </div>
                         <div className="flex items-center gap-1">
-                          <div className="w-3 h-3 rounded-full bg-gray-100" />
-                          <div className="w-3 h-3 rounded-full bg-black" />
+                          <div
+                            className="w-3 h-3 rounded-full"
+                            style={{ backgroundColor: customText ? `${customText}25` : "#f3f4f6" }}
+                          />
+                          <div
+                            className="w-3 h-3 rounded-full"
+                            style={{ backgroundColor: customText || "#000000" }}
+                          />
                         </div>
                       </div>
                     )}
 
                     {key === "5" && (
-                      <div className="w-full bg-indigo-600 text-white rounded-lg p-2.5 border border-indigo-700 shadow-xs flex items-center justify-between h-20">
+                      <div
+                        className="w-full bg-white text-gray-900 rounded-lg p-2.5 border border-gray-200 shadow-xs flex items-center justify-between h-20"
+                        style={{
+                          backgroundColor: customBg || undefined,
+                          color: customText || undefined,
+                          borderColor: customText ? `${customText}25` : undefined,
+                        }}
+                      >
                         <div className="flex items-center gap-1.5">
-                          <div className="w-4 h-4 rounded-md bg-white text-[8px] font-bold text-indigo-700 flex items-center justify-center">
-                            A
+                          <div
+                            className="w-4 h-4 rounded-xs text-[8px] font-black flex items-center justify-center"
+                            style={{
+                              backgroundColor: customText || "#000000",
+                              color: customBg || "#ffffff",
+                            }}
+                          >
+                            P
                           </div>
-                          <div className="h-2 w-8 bg-white/90 rounded-xs" />
+                          <div className="flex flex-col">
+                            <span
+                              className="text-[8px] font-black tracking-wider uppercase leading-none"
+                              style={{ color: customText || "#111827" }}
+                            >
+                              PEARLS
+                            </span>
+                            <span
+                              className="text-[5px] font-medium tracking-widest uppercase leading-none mt-0.5"
+                              style={{ color: customText ? `${customText}99` : "rgb(156 163 175)" }}
+                            >
+                              COUTURE
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[7px] font-semibold tracking-wider uppercase" style={{ color: customText || "#374151" }}>
+                          <div className="flex flex-col items-center">
+                            <span className="font-bold" style={{ color: customText || "#000000" }}>HOME</span>
+                            <span
+                              className="w-2.5 h-[1.5px] rounded-full mt-0.5"
+                              style={{ backgroundColor: customText || "#000000" }}
+                            />
+                          </div>
+                          <span style={{ color: customText ? `${customText}99` : "rgb(156 163 175)" }}>SHOP</span>
+                          <span className="flex items-center gap-0.5" style={{ color: customText ? `${customText}99` : "rgb(156 163 175)" }}>
+                            CAT <span className="text-[6px]">▾</span>
+                          </span>
                         </div>
                         <div className="flex items-center gap-1">
-                          <span className="px-2 py-0.5 bg-white text-[8px] text-indigo-900 font-bold rounded-md shadow-xs">
-                            Home
-                          </span>
-                          <span className="px-1.5 py-0.5 text-[8px] text-white/80">
-                            Festive
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <div className="h-3 w-8 bg-white/20 rounded-full" />
-                          <div className="w-3.5 h-3.5 rounded-full bg-white text-indigo-900" />
+                          <div
+                            className="w-2.5 h-2.5 rounded-full border"
+                            style={{ borderColor: customText ? `${customText}50` : "rgb(156 163 175)" }}
+                          />
+                          <div
+                            className="w-2.5 h-2.5 rounded-full border"
+                            style={{ borderColor: customText ? `${customText}50` : "rgb(156 163 175)" }}
+                          />
+                          <div
+                            className="w-2.5 h-2.5 rounded-full"
+                            style={{ backgroundColor: customText || "#000000" }}
+                          />
                         </div>
                       </div>
                     )}
 
                     {key === "6" && (
-                      <div className="w-full bg-white rounded-lg p-2.5 border border-black/10 shadow-xs flex items-center justify-between h-20 text-gray-900">
+                      <div
+                        className="w-full bg-white rounded-lg p-2.5 border border-black/10 shadow-xs flex items-center justify-between h-20 text-gray-900"
+                        style={{
+                          backgroundColor: customBg || undefined,
+                          color: customText || undefined,
+                          borderColor: customText ? `${customText}25` : undefined,
+                        }}
+                      >
                         <div className="flex items-center gap-1">
-                          <div className="w-4 h-4 rounded-xl bg-black text-[8px] font-black text-white flex items-center justify-center">
+                          <div
+                            className="w-4 h-4 rounded-xl text-[8px] font-black flex items-center justify-center"
+                            style={{
+                              backgroundColor: customText || "#000000",
+                              color: customBg || "#ffffff",
+                            }}
+                          >
                             A
                           </div>
-                          <div className="h-2.5 w-7 bg-black rounded-xs" />
+                          <div
+                            className="h-2.5 w-7 rounded-xs"
+                            style={{ backgroundColor: customText || "#000000" }}
+                          />
                         </div>
                         <div className="flex items-center gap-1">
-                          <span className="px-2 py-1 bg-black text-[7px] text-white font-black rounded-xl">
+                          <span
+                            className="px-2 py-1 text-[7px] font-black rounded-xl"
+                            style={{
+                              backgroundColor: customText || "#000000",
+                              color: customBg || "#ffffff",
+                            }}
+                          >
                             HOME
                           </span>
-                          <span className="px-1.5 py-1 bg-gray-100 text-[7px] font-bold text-gray-700 rounded-xl">
+                          <span
+                            className="px-1.5 py-1 text-[7px] font-bold rounded-xl"
+                            style={{
+                              backgroundColor: customText ? `${customText}15` : "#f3f4f6",
+                              color: customText || "#374151",
+                            }}
+                          >
                             SHOP
                           </span>
                         </div>
                         <div className="flex items-center gap-1">
-                          <div className="w-4 h-4 rounded-xl bg-gray-100" />
-                          <div className="w-4 h-4 rounded-xl bg-black" />
+                          <div
+                            className="w-4 h-4 rounded-xl"
+                            style={{ backgroundColor: customText ? `${customText}15` : "#f3f4f6" }}
+                          />
+                          <div
+                            className="w-4 h-4 rounded-xl"
+                            style={{ backgroundColor: customText || "#000000" }}
+                          />
                         </div>
                       </div>
                     )}
@@ -3387,26 +4727,378 @@ export default function HomepageManager() {
                       </p>
                     </div>
 
-                    <button
-                      type="button"
-                      disabled={isActive || savingNavbar}
-                      onClick={() => handleNavbarTemplateSelect(Number(key))}
-                      className={`w-full py-2 rounded-lg text-xs font-semibold transition-all duration-200 flex items-center justify-center gap-1.5 cursor-pointer ${
-                        isActive
-                          ? "bg-indigo-100 text-indigo-700 cursor-default"
-                          : "bg-gray-100 text-gray-700 hover:bg-indigo-50 hover:text-indigo-700"
-                      }`}
-                    >
-                      {isActive ? (
-                        <>
-                          <CheckCircleIcon className="w-3.5 h-3.5 text-indigo-600" />
-                          Active
-                        </>
-                      ) : (
-                        "Set Active"
-                      )}
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        disabled={isActive || savingNavbar}
+                        onClick={() => handleNavbarTemplateSelect(Number(key))}
+                        className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 flex items-center justify-center gap-1 cursor-pointer ${
+                          isActive
+                            ? "bg-indigo-100 text-indigo-700 cursor-default"
+                            : "bg-gray-100 text-gray-700 hover:bg-indigo-50 hover:text-indigo-700"
+                        }`}
+                      >
+                        {isActive ? (
+                          <>
+                            <CheckCircleIcon className="w-3.5 h-3.5 text-indigo-600" />
+                            Active
+                          </>
+                        ) : (
+                          "Set Active"
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          isEditing
+                            ? setEditingNavbarTemplate(null)
+                            : openNavbarEdit(key)
+                        }
+                        className="flex-1 py-1.5 rounded-lg text-xs font-semibold bg-white border border-gray-300 text-gray-600 hover:border-indigo-400 hover:text-indigo-600 transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <PencilSquareIcon className="w-3.5 h-3.5" />
+                        {isEditing ? "Cancel" : "Edit Colors"}
+                      </button>
+                    </div>
                   </div>
+
+                  {/* Inline edit form for Header Colors */}
+                  {isEditing && (
+                    <div className="border-t border-gray-100 p-4 bg-gray-50 space-y-3.5">
+                      {(() => {
+                        const templateDef = NAVBAR_DEFAULT_COLORS[key] || {
+                          bg: "#0a0a0a",
+                          text: "#ffffff",
+                          bgLabel: "Template default",
+                          textLabel: "Template default",
+                        };
+                        const hasCustomBg = Boolean(navbarForm.bgColor && navbarForm.bgColor.trim());
+                        const hasCustomText = Boolean(navbarForm.textColor && navbarForm.textColor.trim());
+                        const hasAnyCustomColor = hasCustomBg || hasCustomText;
+
+                        const effectiveBg = navbarForm.bgColor || templateDef.bg;
+                        const effectiveText = navbarForm.textColor || templateDef.text;
+
+                        return (
+                          <div className="p-3.5 bg-white rounded-xl border border-gray-200 shadow-xs space-y-3.5">
+                            {/* Section Header */}
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-1.5">
+                                <SwatchIcon className="w-4 h-4 text-indigo-600" />
+                                <span className="text-xs font-bold text-gray-800">
+                                  Navbar Color Palette
+                                </span>
+                              </div>
+                              {hasAnyCustomColor && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setNavbarForm((p) => ({
+                                      ...p,
+                                      bgColor: undefined,
+                                      textColor: undefined,
+                                    }))
+                                  }
+                                  className="text-[11px] font-semibold text-rose-600 hover:text-rose-700 flex items-center gap-1 hover:underline cursor-pointer"
+                                  title="Reset both background and text colors to the template original designer colors"
+                                >
+                                  <ArrowPathIcon className="w-3 h-3" />
+                                  Reset to Defaults
+                                </button>
+                              )}
+                            </div>
+
+                            <p className="text-[11px] text-gray-500 leading-snug">
+                              Customize background and text colors for Template {key}. Leave empty to use the original template theme.
+                            </p>
+
+                            {/* Background Color Control Card */}
+                            <div className="bg-gray-50/80 border border-gray-200/90 rounded-lg p-2.5 space-y-2">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-xs font-bold text-gray-700">
+                                    Background Color
+                                  </span>
+                                  {hasCustomBg ? (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold bg-indigo-50 text-indigo-600 border border-indigo-200">
+                                      Custom
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-gray-200/70 text-gray-500">
+                                      Default
+                                    </span>
+                                  )}
+                                </div>
+                                {hasCustomBg && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setNavbarForm((p) => ({ ...p, bgColor: undefined }))
+                                    }
+                                    className="text-[10px] font-medium text-rose-600 hover:text-rose-700 hover:underline cursor-pointer"
+                                  >
+                                    ✕ Clear (Use Default)
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* Input with color swatch */}
+                              <div className="flex items-center gap-2 bg-white border border-gray-300 rounded-lg p-1.5 focus-within:ring-2 focus-within:ring-indigo-400 focus-within:border-indigo-400 shadow-2xs">
+                                <label className="relative cursor-pointer shrink-0">
+                                  <input
+                                    type="color"
+                                    value={
+                                      hasCustomBg && navbarForm.bgColor?.startsWith("#")
+                                        ? navbarForm.bgColor
+                                        : templateDef.bg.startsWith("#")
+                                          ? templateDef.bg
+                                          : "#0a0a0a"
+                                    }
+                                    onChange={(e) =>
+                                      setNavbarForm((p) => ({
+                                        ...p,
+                                        bgColor: e.target.value,
+                                      }))
+                                    }
+                                    className="sr-only"
+                                  />
+                                  <span
+                                    className="w-7 h-7 rounded-md border border-black/20 shadow-xs block transition-transform hover:scale-105"
+                                    style={{ backgroundColor: effectiveBg }}
+                                    title="Click to pick background color"
+                                  />
+                                </label>
+                                <input
+                                  type="text"
+                                  value={navbarForm.bgColor ?? ""}
+                                  onChange={(e) =>
+                                    setNavbarForm((p) => ({
+                                      ...p,
+                                      bgColor: e.target.value,
+                                    }))
+                                  }
+                                  placeholder={`${templateDef.bg} (Default)`}
+                                  className="flex-1 font-mono text-xs text-gray-800 placeholder-gray-400 focus:outline-none bg-transparent"
+                                />
+                                <label className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-700 px-2 py-0.5 rounded bg-indigo-50/70 hover:bg-indigo-100/70 cursor-pointer select-none transition-colors">
+                                  <input
+                                    type="color"
+                                    value={
+                                      hasCustomBg && navbarForm.bgColor?.startsWith("#")
+                                        ? navbarForm.bgColor
+                                        : templateDef.bg.startsWith("#")
+                                          ? templateDef.bg
+                                          : "#0a0a0a"
+                                    }
+                                    onChange={(e) =>
+                                      setNavbarForm((p) => ({
+                                        ...p,
+                                        bgColor: e.target.value,
+                                      }))
+                                    }
+                                    className="sr-only"
+                                  />
+                                  Pick
+                                </label>
+                              </div>
+
+                              {/* Quick Presets */}
+                              <div className="flex items-center gap-1.5 pt-0.5 flex-wrap">
+                                <span className="text-[10px] text-gray-400 font-medium shrink-0">Presets:</span>
+                                {[
+                                  { hex: "#0a0a0a", label: "Dark" },
+                                  { hex: "#ffffff", label: "White" },
+                                  { hex: "#0f172a", label: "Navy" },
+                                  { hex: "#f8fafc", label: "Slate-50" },
+                                  { hex: "#4f46e5", label: "Indigo" },
+                                ].map((chip) => (
+                                  <button
+                                    key={chip.hex}
+                                    type="button"
+                                    onClick={() =>
+                                      setNavbarForm((p) => ({ ...p, bgColor: chip.hex }))
+                                    }
+                                    className={`h-5 px-1.5 rounded border text-[10px] font-medium flex items-center gap-1 transition-all cursor-pointer ${
+                                      navbarForm.bgColor?.toLowerCase() === chip.hex.toLowerCase()
+                                        ? "border-indigo-600 ring-1 ring-indigo-300 bg-white"
+                                        : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50"
+                                    }`}
+                                    title={`Set background to ${chip.label} (${chip.hex})`}
+                                  >
+                                    <span
+                                      className="w-2.5 h-2.5 rounded-full border border-black/15 shrink-0"
+                                      style={{ backgroundColor: chip.hex }}
+                                    />
+                                    <span className="text-gray-700">{chip.label}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Text / Link Color Control Card */}
+                            <div className="bg-gray-50/80 border border-gray-200/90 rounded-lg p-2.5 space-y-2">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-xs font-bold text-gray-700">
+                                    Text &amp; Icons Color
+                                  </span>
+                                  {hasCustomText ? (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold bg-indigo-50 text-indigo-600 border border-indigo-200">
+                                      Custom
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-gray-200/70 text-gray-500">
+                                      Default
+                                    </span>
+                                  )}
+                                </div>
+                                {hasCustomText && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setNavbarForm((p) => ({ ...p, textColor: undefined }))
+                                    }
+                                    className="text-[10px] font-medium text-rose-600 hover:text-rose-700 hover:underline cursor-pointer"
+                                  >
+                                    ✕ Clear (Use Default)
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* Input with color swatch */}
+                              <div className="flex items-center gap-2 bg-white border border-gray-300 rounded-lg p-1.5 focus-within:ring-2 focus-within:ring-indigo-400 focus-within:border-indigo-400 shadow-2xs">
+                                <label className="relative cursor-pointer shrink-0">
+                                  <input
+                                    type="color"
+                                    value={
+                                      hasCustomText && navbarForm.textColor?.startsWith("#")
+                                        ? navbarForm.textColor
+                                        : templateDef.text.startsWith("#")
+                                          ? templateDef.text
+                                          : "#ffffff"
+                                    }
+                                    onChange={(e) =>
+                                      setNavbarForm((p) => ({
+                                        ...p,
+                                        textColor: e.target.value,
+                                      }))
+                                    }
+                                    className="sr-only"
+                                  />
+                                  <span
+                                    className="w-7 h-7 rounded-md border border-black/20 shadow-xs block transition-transform hover:scale-105"
+                                    style={{ backgroundColor: effectiveText }}
+                                    title="Click to pick text color"
+                                  />
+                                </label>
+                                <input
+                                  type="text"
+                                  value={navbarForm.textColor ?? ""}
+                                  onChange={(e) =>
+                                    setNavbarForm((p) => ({
+                                      ...p,
+                                      textColor: e.target.value,
+                                    }))
+                                  }
+                                  placeholder={`${templateDef.text} (Default)`}
+                                  className="flex-1 font-mono text-xs text-gray-800 placeholder-gray-400 focus:outline-none bg-transparent"
+                                />
+                                <label className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-700 px-2 py-0.5 rounded bg-indigo-50/70 hover:bg-indigo-100/70 cursor-pointer select-none transition-colors">
+                                  <input
+                                    type="color"
+                                    value={
+                                      hasCustomText && navbarForm.textColor?.startsWith("#")
+                                        ? navbarForm.textColor
+                                        : templateDef.text.startsWith("#")
+                                          ? templateDef.text
+                                          : "#ffffff"
+                                    }
+                                    onChange={(e) =>
+                                      setNavbarForm((p) => ({
+                                        ...p,
+                                        textColor: e.target.value,
+                                      }))
+                                    }
+                                    className="sr-only"
+                                  />
+                                  Pick
+                                </label>
+                              </div>
+
+                              {/* Quick Presets */}
+                              <div className="flex items-center gap-1.5 pt-0.5 flex-wrap">
+                                <span className="text-[10px] text-gray-400 font-medium shrink-0">Presets:</span>
+                                {[
+                                  { hex: "#ffffff", label: "White" },
+                                  { hex: "#1f2937", label: "Slate-800" },
+                                  { hex: "#000000", label: "Black" },
+                                  { hex: "#64748b", label: "Slate-500" },
+                                  { hex: "#f1f5f9", label: "Off-white" },
+                                ].map((chip) => (
+                                  <button
+                                    key={chip.hex}
+                                    type="button"
+                                    onClick={() =>
+                                      setNavbarForm((p) => ({ ...p, textColor: chip.hex }))
+                                    }
+                                    className={`h-5 px-1.5 rounded border text-[10px] font-medium flex items-center gap-1 transition-all cursor-pointer ${
+                                      navbarForm.textColor?.toLowerCase() === chip.hex.toLowerCase()
+                                        ? "border-indigo-600 ring-1 ring-indigo-300 bg-white"
+                                        : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50"
+                                    }`}
+                                    title={`Set text to ${chip.label} (${chip.hex})`}
+                                  >
+                                    <span
+                                      className="w-2.5 h-2.5 rounded-full border border-black/15 shrink-0"
+                                      style={{ backgroundColor: chip.hex }}
+                                    />
+                                    <span className="text-gray-700">{chip.label}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Live mini preview swatch */}
+                            <div
+                              className="rounded-lg p-3 border text-center transition-all shadow-xs"
+                              style={{
+                                backgroundColor: effectiveBg,
+                                color: effectiveText,
+                                borderColor: hasCustomText
+                                  ? `${navbarForm.textColor}33`
+                                  : "rgba(128,128,128,0.2)",
+                              }}
+                            >
+                              <div className="text-[11px] font-bold tracking-wider uppercase opacity-85">
+                                Live Header Preview
+                              </div>
+                              <div className="flex items-center justify-between mt-2 px-2 py-1.5 rounded bg-black/5 border border-current/10 text-xs">
+                                <span className="font-bold tracking-tight">BRAND</span>
+                                <div className="flex items-center gap-2 text-[10px] opacity-80">
+                                  <span className="font-semibold underline">Home</span>
+                                  <span>Shop</span>
+                                  <span>Story</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 opacity-80">
+                                  <span className="text-[10px]">🔍</span>
+                                  <span className="text-[10px]">🛍️</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => saveNavbarTemplate()}
+                              disabled={savingNavbar}
+                              className="w-full py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 cursor-pointer"
+                            >
+                              {savingNavbar ? "Saving..." : "Save Header Colors"}
+                            </button>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -3414,7 +5106,489 @@ export default function HomepageManager() {
         </div>
       )}
 
-      {/* ── FOOTER TAB ─────────────────────────────────────────────────── */}
+      {/* -¢------¬-¢------¬ PRE-FOOTER BANNERS TAB -¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬ */}
+            {activeTab === "CATEGORIES" && (
+        <div className="space-y-6 w-full max-w-full overflow-hidden animate-fadeIn">
+          <div className="bg-white border border-gray-200/90 rounded-2xl p-6 shadow-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 pb-4 border-b border-gray-100">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-indigo-600" />
+                  <h3 className="text-sm font-bold text-gray-950 uppercase tracking-wider">
+                    Category Display Shape
+                  </h3>
+                </div>
+                <p className="text-xs text-gray-500 mt-1 max-w-xl">
+                  Configure the visual shape of your collections across the storefront homepage ("Shop by Category") and the all-categories directory page.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleSaveCategoryShape(draftCategoryShape)}
+                disabled={savingCategoryShape || draftCategoryShape === categoryShape}
+                className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                  draftCategoryShape !== categoryShape
+                    ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-100 cursor-pointer"
+                    : "bg-gray-100 text-gray-400 cursor-not-allowed"
+                }`}
+              >
+                <CheckCircleIcon className="w-4 h-4" />
+                {savingCategoryShape ? "Saving..." : "Save Category Shape"}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              {/* Option 1: Square */}
+              <div
+                onClick={() => setDraftCategoryShape("square")}
+                className={`relative p-5 rounded-2xl border-2 transition-all cursor-pointer ${
+                  draftCategoryShape === "square"
+                    ? "border-indigo-600 bg-indigo-50/20 shadow-md ring-2 ring-indigo-600/10"
+                    : "border-gray-200 hover:border-gray-300 hover:bg-gray-50/50"
+                }`}
+              >
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700">
+                      <Squares2X2Icon className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-gray-900">Square (Default)</h4>
+                      <span className="text-[11px] text-gray-500 font-medium">1:1 Aspect Ratio · Rounded-2xl</span>
+                    </div>
+                  </div>
+                  {draftCategoryShape === "square" && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-600 text-white uppercase tracking-wider">
+                      Active
+                    </span>
+                  )}
+                </div>
+
+                <div className="bg-slate-50 border border-slate-200/70 rounded-xl p-4 flex items-center justify-center gap-6">
+                  <div className="flex flex-col items-start gap-1.5">
+                    <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-amber-100 to-amber-200 border border-amber-300/60 shadow-xs flex items-center justify-center text-[10px] font-bold text-amber-900">
+                      Rings
+                    </div>
+                    <span className="text-[10px] font-bold uppercase text-gray-700 tracking-wider">Rings</span>
+                  </div>
+                  <div className="flex flex-col items-start gap-1.5">
+                    <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-emerald-100 to-emerald-200 border border-emerald-300/60 shadow-xs flex items-center justify-center text-[10px] font-bold text-emerald-900">
+                      Silks
+                    </div>
+                    <span className="text-[10px] font-bold uppercase text-gray-700 tracking-wider">Sarees</span>
+                  </div>
+                </div>
+
+                <p className="text-xs text-gray-600 mt-4 leading-relaxed">
+                  Clean modern presentation with soft rounded-square tiles (<code>rounded-2xl</code>). Great for detailed catalog photography, editorial layouts, and high-resolution textures.
+                </p>
+              </div>
+
+              {/* Option 2: Circle */}
+              <div
+                onClick={() => setDraftCategoryShape("circle")}
+                className={`relative p-5 rounded-2xl border-2 transition-all cursor-pointer ${
+                  draftCategoryShape === "circle"
+                    ? "border-indigo-600 bg-indigo-50/20 shadow-md ring-2 ring-indigo-600/10"
+                    : "border-gray-200 hover:border-gray-300 hover:bg-gray-50/50"
+                }`}
+              >
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700">
+                      <div className="w-5 h-5 rounded-full border-2 border-slate-700" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-gray-900">Circle (Boutique)</h4>
+                      <span className="text-[11px] text-gray-500 font-medium">1:1 Aspect Ratio · Rounded-Full</span>
+                    </div>
+                  </div>
+                  {draftCategoryShape === "circle" && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-600 text-white uppercase tracking-wider">
+                      Active
+                    </span>
+                  )}
+                </div>
+
+                <div className="bg-slate-50 border border-slate-200/70 rounded-xl p-4 flex items-center justify-center gap-6">
+                  <div className="flex flex-col items-center gap-1.5">
+                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-purple-100 to-purple-200 border-2 border-purple-300 shadow-xs flex items-center justify-center text-[10px] font-bold text-purple-900">
+                      Chains
+                    </div>
+                    <span className="text-[10px] font-bold uppercase text-gray-700 tracking-wider">Chains</span>
+                  </div>
+                  <div className="flex flex-col items-center gap-1.5">
+                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-rose-100 to-rose-200 border-2 border-rose-300 shadow-xs flex items-center justify-center text-[10px] font-bold text-rose-900">
+                      Kurtas
+                    </div>
+                    <span className="text-[10px] font-bold uppercase text-gray-700 tracking-wider">Kurtas</span>
+                  </div>
+                </div>
+
+                <p className="text-xs text-gray-600 mt-4 leading-relaxed">
+                  Distinctive circular avatars (<code>rounded-full</code>) with centered typography. Ideal for mobile shopping, quick discovery, fashion accessories, and beauty stores.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+{activeTab === "PRE_FOOTER" && (
+        <div className="space-y-6 animate-fadeIn">
+          {/* Header & Main Actions */}
+          <div className="bg-white border border-gray-200/80 shadow-sm rounded-2xl p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-gray-100">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse" />
+                  <h2 className="text-xl font-bold text-gray-900 tracking-tight">Full-Width Pre-Footer Banners</h2>
+                </div>
+                <p className="text-xs text-gray-500 mt-1 max-w-2xl leading-relaxed">
+                  Manage up to 3 full-width banners that alternate with your Category Showcases down the homepage. Images are presented in a sleek widescreen editorial ratio (<strong className="text-gray-700">1920 × 700 px</strong> or <strong className="text-gray-700">1320 × 484 px</strong>, 2.73:1 aspect ratio), matching the referral design.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={savePreFooterConfig}
+                disabled={savingPreFooter}
+                className="shrink-0 inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wide bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow-indigo-100"
+              >
+                {savingPreFooter ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircleIcon className="w-4 h-4" />
+                    Save Changes
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Global Controls & Status Pill */}
+            <div className="pt-5 grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+              {/* Section Visibility Toggle */}
+              <div className="flex items-center justify-between p-3.5 rounded-xl border border-gray-200 bg-gray-50/50">
+                <div>
+                  <span className="text-xs font-bold text-gray-800 block">Section Visibility</span>
+                  <span className="text-[11px] text-gray-500">
+                    {preFooterConfig.enabled ? "Visible on storefront" : "Hidden from storefront"}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPreFooterConfig((p) => ({ ...p, enabled: !p.enabled }))}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    preFooterConfig.enabled ? "bg-indigo-600" : "bg-gray-300"
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      preFooterConfig.enabled ? "translate-x-5" : "translate-x-0"
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* Status Mode Indicator */}
+              <div className="p-3.5 rounded-xl border border-indigo-100 bg-indigo-50/40 text-left">
+                <span className="text-xs font-bold text-indigo-950 block">Active Banners Stack</span>
+                <span className="text-[11px] text-indigo-700 font-medium leading-tight block mt-0.5">
+                  {!preFooterConfig.enabled
+                    ? "🚫 Section is Disabled (Hidden from storefront)"
+                    : (() => {
+                        const count = (preFooterConfig.banners || []).filter(
+                          (b) => b && b.isActive !== false && b.image && b.image.trim() !== ""
+                        ).length;
+                        if (count === 0) return "⚪ 0 active banners (Hidden from storefront)";
+                        if (count === 1) return "⭐ 1 full-width banner active (100% natural size)";
+                        return `📐 • ${count} full-width banner${count > 1 ? "s" : ""} active (stacked one by one)`;
+                      })()}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Recommended Banner Size Box */}
+          <div className="p-4 rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50/70 via-indigo-50/40 to-white shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-left">
+            <div className="flex items-start gap-3">
+              <span className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs text-base">
+                📐
+              </span>
+              <div>
+                <span className="text-xs font-bold text-indigo-950 block tracking-tight">
+                  Recommended Pre-Footer Banner Size &amp; Aspect Ratio:
+                </span>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-indigo-900">
+                  <span>
+                    Banner Dimensions: <strong className="font-extrabold text-indigo-950">1920 × 700 px</strong> (or <strong className="font-extrabold text-indigo-950">1320 × 484 px</strong>)
+                  </span>
+                  <span className="text-indigo-400">&bull;</span>
+                  <span>
+                    Aspect Ratio: <strong className="font-extrabold text-indigo-950">2.73:1 (~16:6 Widescreen)</strong>
+                  </span>
+                </div>
+                <p className="text-[11px] text-indigo-600/90 mt-1 leading-relaxed">
+                  Matches the sleek, cinematic referral editorial proportion (<span className="font-semibold text-indigo-800">1319 × 483 px</span>). Images adapt responsively across all screens with zero distortion.
+                </p>
+              </div>
+            </div>
+            <div className="shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-indigo-200/80 text-indigo-900 text-xs font-bold shadow-xs">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              Ratio: 2.73:1 (1319 × 483)
+            </div>
+          </div>
+
+          {/* 3 Banner Slots */}
+          <div className="space-y-4">
+            {[0, 1, 2].map((slotIndex) => {
+              const slot = preFooterConfig.banners?.[slotIndex];
+              const hasImage = Boolean(slot?.image && slot.image.trim() !== "");
+              const isUploading = uploadingPreFooterSlot === slotIndex;
+              const isActive = slot?.isActive !== false;
+
+              return (
+                <div
+                  key={slotIndex}
+                  className={`bg-white border rounded-2xl shadow-sm transition-all overflow-hidden ${
+                    hasImage && isActive
+                      ? "border-gray-200"
+                      : hasImage && !isActive
+                      ? "border-amber-200 bg-amber-50/20"
+                      : "border-gray-200/80"
+                  }`}
+                >
+                  {/* Slot Header */}
+                  <div className="px-5 py-3.5 bg-gray-50/70 border-b border-gray-100 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-6 h-6 rounded-lg bg-gray-200 text-gray-700 font-bold text-xs flex items-center justify-center">
+                        {slotIndex + 1}
+                      </span>
+                      <span className="text-xs font-bold text-gray-900">
+                        Banner Slot {slotIndex + 1}
+                      </span>
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                        1920 × 700 px (2.73:1)
+                      </span>
+                      {slotIndex === 0 && (
+                        <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
+                          Primary
+                        </span>
+                      )}
+                      {hasImage && !isActive && (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                          Paused
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {hasImage && (
+                        <button
+                          type="button"
+                          onClick={() => updatePreFooterSlot(slotIndex, { isActive: !isActive })}
+                          className={`text-xs px-2.5 py-1 rounded-lg font-semibold transition-colors ${
+                            isActive
+                              ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                              : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                          }`}
+                        >
+                          {isActive ? "Active" : "Paused"}
+                        </button>
+                      )}
+                      {hasImage && (
+                        <button
+                          type="button"
+                          onClick={() => removePreFooterSlotImage(slotIndex)}
+                          title="Remove banner"
+                          className="p-1 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors"
+                        >
+                          <TrashIcon className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Slot Body */}
+                  <div className="p-5 grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+                    {/* Image Area (5 cols) */}
+                    <div className="lg:col-span-5">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500 block">
+                          Banner Image
+                        </label>
+                        <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">
+                          1920 × 700 px (2.73:1)
+                        </span>
+                      </div>
+                      {hasImage ? (
+                        <div className="relative group rounded-xl overflow-hidden border border-gray-200 bg-neutral-950 aspect-[2.73/1] max-h-[220px] flex items-center justify-center">
+                          <img
+                            src={slot.image}
+                            alt={slot.title || `Slot ${slotIndex + 1}`}
+                            className="w-full h-full object-cover object-center block"
+                          />
+                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                            <label className="cursor-pointer px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-gray-900 hover:bg-gray-100 shadow transition-transform active:scale-95">
+                              Replace Image
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                disabled={isUploading}
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) uploadPreFooterSlotImage(file, slotIndex);
+                                  e.target.value = "";
+                                }}
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => removePreFooterSlotImage(slotIndex)}
+                              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-600 text-white hover:bg-red-700 shadow transition-transform active:scale-95"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                          {isUploading && (
+                            <div className="absolute inset-0 bg-black/75 flex flex-col items-center justify-center gap-2 text-white text-xs">
+                              <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                              Uploading...
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <label
+                          className={`flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-300 hover:border-indigo-400 bg-gray-50/50 hover:bg-indigo-50/20 py-8 px-4 transition-all cursor-pointer text-center ${
+                            isUploading ? "pointer-events-none opacity-60" : ""
+                          }`}
+                        >
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            disabled={isUploading}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) uploadPreFooterSlotImage(file, slotIndex);
+                              e.target.value = "";
+                            }}
+                          />
+                          {isUploading ? (
+                            <div className="flex flex-col items-center gap-1.5 text-indigo-600">
+                              <span className="w-5 h-5 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
+                              <span className="text-xs font-semibold">Uploading...</span>
+                            </div>
+                          ) : (
+                            <>
+                              <PhotoIcon className="w-7 h-7 text-gray-400 mb-1" />
+                              <span className="text-xs font-bold text-gray-700">Click to upload banner</span>
+                              <span className="text-[11px] font-semibold text-indigo-900 mt-1">
+                                Recommended: 1920 × 700 px (or 1320 × 484 px)
+                              </span>
+                              <span className="text-[10px] text-gray-500 mt-0.5">
+                                Aspect Ratio: 2.73:1 (Widescreen) &bull; JPG, PNG, WEBP &bull; Max 1 MB
+                              </span>
+                            </>
+                          )}
+                        </label>
+                      )}
+                    </div>
+
+                    {/* Controls Area (7 cols) */}
+                    <div className="lg:col-span-7 space-y-3.5">
+                      {/* Link input */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                            Banner Click Link <span className="text-gray-400 font-normal lowercase">(optional)</span>
+                          </label>
+                          {/* Quick suggestion pills */}
+                          <div className="flex gap-1 text-[10px]">
+                            <button
+                              type="button"
+                              onClick={() => updatePreFooterSlot(slotIndex, { link: "/products" })}
+                              className="px-1.5 py-0.5 rounded bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors"
+                            >
+                              + All Products
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updatePreFooterSlot(slotIndex, { link: "/about" })}
+                              className="px-1.5 py-0.5 rounded bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors"
+                            >
+                              + About
+                            </button>
+                          </div>
+                        </div>
+                        <input
+                          type="text"
+                          value={slot?.link || ""}
+                          onChange={(e) => updatePreFooterSlot(slotIndex, { link: e.target.value })}
+                          placeholder="e.g. /products/handloom-saree or https://..."
+                          className="w-full text-xs border border-gray-300 rounded-xl px-3 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 font-mono"
+                        />
+                        <p className="text-[10px] text-gray-400 mt-1">
+                          If provided, clicking this banner redirects customers here. If blank, banner is display-only.
+                        </p>
+                      </div>
+
+                      {/* Title / Alt input */}
+                      <div>
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1 block">
+                          Title / Alt Text <span className="text-gray-400 font-normal lowercase">(optional)</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={slot?.title || ""}
+                          onChange={(e) => updatePreFooterSlot(slotIndex, { title: e.target.value })}
+                          placeholder="e.g. Exclusive Festive Collection 2026"
+                          className="w-full text-xs border border-gray-300 rounded-xl px-3 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        />
+                        <p className="text-[10px] text-gray-400 mt-1">
+                          Accessibility description for screen readers and SEO alt attribute.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Bottom Save Bar */}
+          <div className="sticky bottom-4 z-10 bg-white/95 backdrop-blur-md border border-gray-200 rounded-2xl p-4 shadow-lg flex items-center justify-between gap-4">
+            <p className="text-xs text-gray-500">
+              Make sure to save your changes to publish them to your storefront live preview.
+            </p>
+            <button
+              type="button"
+              onClick={savePreFooterConfig}
+              disabled={savingPreFooter}
+              className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wide bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow-indigo-100"
+            >
+              {savingPreFooter ? (
+                <>
+                  <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <CheckCircleIcon className="w-4 h-4" />
+                  Save Changes
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* -¢------¬-¢------¬ FOOTER TAB -¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬ */}
       {activeTab === "FOOTER" && (
         <div>
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-6">
@@ -3441,30 +5615,64 @@ export default function HomepageManager() {
                 >
                   {/* Preview strip */}
                   <div
-                    className={`h-24 flex items-center justify-center ${key === "1"
-                      ? "bg-[#0a0a0a]"
-                      : key === "2"
-                        ? "bg-gray-50 border-b border-gray-200"
-                        : key === "3"
-                          ? "bg-gradient-to-br from-indigo-950 via-slate-900 to-gray-950"
-                          : key === "4"
-                            ? "bg-white border-b border-gray-100"
-                            : key === "5"
-                              ? "bg-gradient-to-r from-[var(--theme-primary)] to-[var(--theme-accent)]"
-                              : "bg-gray-50 border-b border-gray-200"
-                      }`}
+                    className={`h-24 flex items-center justify-center ${
+                      footerConfig.templates[key]?.bgColor
+                        ? "border-b border-black/10"
+                        : key === "1"
+                          ? "bg-[#0a0a0a]"
+                          : key === "2"
+                            ? "bg-gray-50 border-b border-gray-200"
+                            : key === "3"
+                              ? "bg-gradient-to-br from-indigo-950 via-slate-900 to-gray-950"
+                              : key === "4"
+                                ? "bg-white border-b border-gray-100"
+                                : key === "5"
+                                  ? "bg-gradient-to-r from-[var(--theme-primary)] to-[var(--theme-accent)]"
+                                  : "bg-gray-50 border-b border-gray-200"
+                    }`}
+                    style={{
+                      backgroundColor: footerConfig.templates[key]?.bgColor || undefined,
+                      color: footerConfig.templates[key]?.textColor || undefined,
+                    }}
                   >
                     <div className="text-center">
                       <p
-                        className={`text-base font-black tracking-tight mb-0.5 ${isLightStrip ? "text-gray-900" : "text-white"}`}
+                        className={`text-base font-black tracking-tight mb-0.5 ${
+                          footerConfig.templates[key]?.textColor
+                            ? ""
+                            : isLightStrip
+                              ? "text-gray-900"
+                              : "text-white"
+                        }`}
+                        style={
+                          footerConfig.templates[key]?.textColor
+                            ? { color: footerConfig.templates[key]?.textColor }
+                            : undefined
+                        }
                       >
                         {label.name}
                       </p>
                       <p
-                        className={`text-[10px] ${isLightStrip ? "text-gray-400" : "text-white/50"}`}
+                        className={`text-[10px] ${
+                          footerConfig.templates[key]?.textColor
+                            ? "opacity-60"
+                            : isLightStrip
+                              ? "text-gray-400"
+                              : "text-white/50"
+                        }`}
+                        style={
+                          footerConfig.templates[key]?.textColor
+                            ? { color: footerConfig.templates[key]?.textColor }
+                            : undefined
+                        }
                       >
                         Template {key}
                       </p>
+                      {(footerConfig.templates[key]?.bgColor || footerConfig.templates[key]?.textColor) && (
+                        <span className="mt-1 inline-block text-[9px] px-1.5 py-0.5 rounded font-semibold bg-black/20 text-current backdrop-blur-xs">
+                          Custom Colors
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -3499,6 +5707,425 @@ export default function HomepageManager() {
                   {/* Inline edit form */}
                   {isEditing && (
                     <div className="border-t border-gray-100 p-4 bg-gray-50 space-y-3">
+                      {/* Display Company Name Toggle */}
+                      <div className="flex items-center justify-between p-3.5 bg-white rounded-xl border border-gray-200 shadow-xs">
+                        <div className="pr-4">
+                          <label htmlFor="footerShowCompanyName" className="text-xs font-bold text-gray-800 cursor-pointer block">
+                            Display Company Name Next to Logo
+                          </label>
+                          <p className="text-[11px] text-gray-500 mt-0.5">
+                            Show text brand name next to your logo. Turn OFF to hide the text if your logo image already contains your brand name.
+                          </p>
+                        </div>
+                        <input
+                          type="checkbox"
+                          id="footerShowCompanyName"
+                          checked={footerForm.showCompanyName !== false}
+                          onChange={(e) =>
+                            setFooterForm((p) => ({
+                              ...p,
+                              showCompanyName: e.target.checked,
+                            }))
+                          }
+                          className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 cursor-pointer shrink-0"
+                        />
+                      </div>
+
+                      {/* Logo Background Style (White Badge vs Transparent Blend) */}
+                      <div className="p-3.5 bg-white rounded-xl border border-gray-200 shadow-xs space-y-2.5">
+                        <div>
+                          <label className="text-xs font-bold text-gray-800 block">
+                            Logo Container &amp; Background
+                          </label>
+                          <p className="text-[11px] text-gray-500 mt-0.5">
+                            Choose whether the logo sits in a white card badge or blends directly into the footer background color.
+                          </p>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2.5 pt-1">
+                          {/* Option 1: White Card Badge */}
+                          <button
+                            type="button"
+                            onClick={() => setFooterForm((p) => ({ ...p, blendLogoWithBg: false }))}
+                            className={`p-3 rounded-lg border text-left transition-all flex flex-col gap-2 cursor-pointer ${
+                              !footerForm.blendLogoWithBg
+                                ? "border-indigo-600 ring-2 ring-indigo-500/20 bg-indigo-50/30"
+                                : "border-gray-200 hover:border-gray-300 bg-white"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-gray-800">White Card</span>
+                              {!footerForm.blendLogoWithBg && (
+                                <span className="w-2 h-2 rounded-full bg-indigo-600 ring-4 ring-indigo-100" />
+                              )}
+                            </div>
+                            {/* Visual Preview */}
+                            <div className="h-10 rounded bg-[#0a0a0a] flex items-center justify-center p-1.5">
+                              <div className="bg-white rounded-md px-2 py-1 shadow-xs flex items-center gap-1.5">
+                                <div className="w-3 h-3 rounded-full bg-indigo-600 shrink-0" />
+                                <span className="text-[10px] font-black text-gray-900 tracking-tight">LOGO</span>
+                              </div>
+                            </div>
+                            <p className="text-[10px] text-gray-500 leading-snug">
+                              White rounded box. Best for dark logos on dark backgrounds.
+                            </p>
+                          </button>
+
+                          {/* Option 2: Transparent / Blend */}
+                          <button
+                            type="button"
+                            onClick={() => setFooterForm((p) => ({ ...p, blendLogoWithBg: true }))}
+                            className={`p-3 rounded-lg border text-left transition-all flex flex-col gap-2 cursor-pointer ${
+                              footerForm.blendLogoWithBg
+                                ? "border-indigo-600 ring-2 ring-indigo-500/20 bg-indigo-50/30"
+                                : "border-gray-200 hover:border-gray-300 bg-white"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-gray-800">Blend with Color</span>
+                              {footerForm.blendLogoWithBg && (
+                                <span className="w-2 h-2 rounded-full bg-indigo-600 ring-4 ring-indigo-100" />
+                              )}
+                            </div>
+                            {/* Visual Preview */}
+                            <div className="h-10 rounded bg-[#0a0a0a] flex items-center justify-center p-1.5">
+                              <div className="flex items-center gap-1.5 text-white">
+                                <div className="w-3 h-3 rounded-full bg-indigo-400 shrink-0" />
+                                <span className="text-[10px] font-black text-white tracking-tight">LOGO</span>
+                              </div>
+                            </div>
+                            <p className="text-[10px] text-gray-500 leading-snug">
+                              No white box. Transparent logo blends directly into the footer color.
+                            </p>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Footer Color Customization (Optional) */}
+                      {(() => {
+                        const templateDef = FOOTER_DEFAULT_COLORS[key] || {
+                          bg: "#0a0a0a",
+                          text: "#ffffff",
+                          bgLabel: "Template default",
+                          textLabel: "Template default",
+                        };
+                        const hasCustomBg = Boolean(footerForm.bgColor && footerForm.bgColor.trim());
+                        const hasCustomText = Boolean(footerForm.textColor && footerForm.textColor.trim());
+                        const hasAnyCustomColor = hasCustomBg || hasCustomText;
+
+                        const effectiveBg = footerForm.bgColor || templateDef.bg;
+                        const effectiveText = footerForm.textColor || templateDef.text;
+
+                        return (
+                          <div className="p-3.5 bg-white rounded-xl border border-gray-200 shadow-xs space-y-3.5">
+                            {/* Section Header */}
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-1.5">
+                                <SwatchIcon className="w-4 h-4 text-indigo-600" />
+                                <span className="text-xs font-bold text-gray-800">
+                                  Footer Color Palette
+                                </span>
+                              </div>
+                              {hasAnyCustomColor && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setFooterForm((p) => ({
+                                      ...p,
+                                      bgColor: undefined,
+                                      textColor: undefined,
+                                    }))
+                                  }
+                                  className="text-[11px] font-semibold text-rose-600 hover:text-rose-700 flex items-center gap-1 hover:underline cursor-pointer"
+                                  title="Reset both background and text colors to the template original designer colors"
+                                >
+                                  <ArrowPathIcon className="w-3 h-3" />
+                                  Reset to Defaults
+                                </button>
+                              )}
+                            </div>
+
+                            <p className="text-[11px] text-gray-500 leading-snug">
+                              Customize background and text colors for Template {key}. Leave empty to use the original template theme.
+                            </p>
+
+                            {/* Background Color Control Card */}
+                            <div className="bg-gray-50/80 border border-gray-200/90 rounded-lg p-2.5 space-y-2">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-xs font-bold text-gray-700">
+                                    Background Color
+                                  </span>
+                                  {hasCustomBg ? (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold bg-indigo-50 text-indigo-600 border border-indigo-200">
+                                      Custom
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-gray-200/70 text-gray-500">
+                                      Default
+                                    </span>
+                                  )}
+                                </div>
+                                {hasCustomBg && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setFooterForm((p) => ({ ...p, bgColor: undefined }))
+                                    }
+                                    className="text-[10px] font-medium text-rose-600 hover:text-rose-700 hover:underline cursor-pointer"
+                                  >
+                                    ✕ Clear (Use Default)
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* Input with color swatch */}
+                              <div className="flex items-center gap-2 bg-white border border-gray-300 rounded-lg p-1.5 focus-within:ring-2 focus-within:ring-indigo-400 focus-within:border-indigo-400 shadow-2xs">
+                                <label className="relative cursor-pointer shrink-0">
+                                  <input
+                                    type="color"
+                                    value={
+                                      hasCustomBg && footerForm.bgColor?.startsWith("#")
+                                        ? footerForm.bgColor
+                                        : templateDef.bg.startsWith("#")
+                                          ? templateDef.bg
+                                          : "#0a0a0a"
+                                    }
+                                    onChange={(e) =>
+                                      setFooterForm((p) => ({
+                                        ...p,
+                                        bgColor: e.target.value,
+                                      }))
+                                    }
+                                    className="sr-only"
+                                  />
+                                  <span
+                                    className="w-7 h-7 rounded-md border border-black/20 shadow-xs block transition-transform hover:scale-105"
+                                    style={{ backgroundColor: effectiveBg }}
+                                    title="Click to pick background color"
+                                  />
+                                </label>
+                                <input
+                                  type="text"
+                                  value={footerForm.bgColor ?? ""}
+                                  onChange={(e) =>
+                                    setFooterForm((p) => ({
+                                      ...p,
+                                      bgColor: e.target.value,
+                                    }))
+                                  }
+                                  placeholder={`${templateDef.bg} (Default)`}
+                                  className="flex-1 font-mono text-xs text-gray-800 placeholder-gray-400 focus:outline-none bg-transparent"
+                                />
+                                <label className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-700 px-2 py-0.5 rounded bg-indigo-50/70 hover:bg-indigo-100/70 cursor-pointer select-none transition-colors">
+                                  <input
+                                    type="color"
+                                    value={
+                                      hasCustomBg && footerForm.bgColor?.startsWith("#")
+                                        ? footerForm.bgColor
+                                        : templateDef.bg.startsWith("#")
+                                          ? templateDef.bg
+                                          : "#0a0a0a"
+                                    }
+                                    onChange={(e) =>
+                                      setFooterForm((p) => ({
+                                        ...p,
+                                        bgColor: e.target.value,
+                                      }))
+                                    }
+                                    className="sr-only"
+                                  />
+                                  Pick
+                                </label>
+                              </div>
+
+                              {/* Quick Presets */}
+                              <div className="flex items-center gap-1.5 pt-0.5 flex-wrap">
+                                <span className="text-[10px] text-gray-400 font-medium shrink-0">Presets:</span>
+                                {[
+                                  { hex: "#0a0a0a", label: "Dark" },
+                                  { hex: "#ffffff", label: "White" },
+                                  { hex: "#0f172a", label: "Navy" },
+                                  { hex: "#f8fafc", label: "Slate-50" },
+                                  { hex: "#4f46e5", label: "Indigo" },
+                                ].map((chip) => (
+                                  <button
+                                    key={chip.hex}
+                                    type="button"
+                                    onClick={() =>
+                                      setFooterForm((p) => ({ ...p, bgColor: chip.hex }))
+                                    }
+                                    className={`h-5 px-1.5 rounded border text-[10px] font-medium flex items-center gap-1 transition-all cursor-pointer ${
+                                      footerForm.bgColor?.toLowerCase() === chip.hex.toLowerCase()
+                                        ? "border-indigo-600 ring-1 ring-indigo-300 bg-white"
+                                        : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50"
+                                    }`}
+                                    title={`Set background to ${chip.label} (${chip.hex})`}
+                                  >
+                                    <span
+                                      className="w-2.5 h-2.5 rounded-full border border-black/15 shrink-0"
+                                      style={{ backgroundColor: chip.hex }}
+                                    />
+                                    <span className="text-gray-700">{chip.label}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Text / Link Color Control Card */}
+                            <div className="bg-gray-50/80 border border-gray-200/90 rounded-lg p-2.5 space-y-2">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-xs font-bold text-gray-700">
+                                    Text &amp; Links Color
+                                  </span>
+                                  {hasCustomText ? (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold bg-indigo-50 text-indigo-600 border border-indigo-200">
+                                      Custom
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-gray-200/70 text-gray-500">
+                                      Default
+                                    </span>
+                                  )}
+                                </div>
+                                {hasCustomText && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setFooterForm((p) => ({ ...p, textColor: undefined }))
+                                    }
+                                    className="text-[10px] font-medium text-rose-600 hover:text-rose-700 hover:underline cursor-pointer"
+                                  >
+                                    ✕ Clear (Use Default)
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* Input with color swatch */}
+                              <div className="flex items-center gap-2 bg-white border border-gray-300 rounded-lg p-1.5 focus-within:ring-2 focus-within:ring-indigo-400 focus-within:border-indigo-400 shadow-2xs">
+                                <label className="relative cursor-pointer shrink-0">
+                                  <input
+                                    type="color"
+                                    value={
+                                      hasCustomText && footerForm.textColor?.startsWith("#")
+                                        ? footerForm.textColor
+                                        : templateDef.text.startsWith("#")
+                                          ? templateDef.text
+                                          : "#ffffff"
+                                    }
+                                    onChange={(e) =>
+                                      setFooterForm((p) => ({
+                                        ...p,
+                                        textColor: e.target.value,
+                                      }))
+                                    }
+                                    className="sr-only"
+                                  />
+                                  <span
+                                    className="w-7 h-7 rounded-md border border-black/20 shadow-xs block transition-transform hover:scale-105"
+                                    style={{ backgroundColor: effectiveText }}
+                                    title="Click to pick text color"
+                                  />
+                                </label>
+                                <input
+                                  type="text"
+                                  value={footerForm.textColor ?? ""}
+                                  onChange={(e) =>
+                                    setFooterForm((p) => ({
+                                      ...p,
+                                      textColor: e.target.value,
+                                    }))
+                                  }
+                                  placeholder={`${templateDef.text} (Default)`}
+                                  className="flex-1 font-mono text-xs text-gray-800 placeholder-gray-400 focus:outline-none bg-transparent"
+                                />
+                                <label className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-700 px-2 py-0.5 rounded bg-indigo-50/70 hover:bg-indigo-100/70 cursor-pointer select-none transition-colors">
+                                  <input
+                                    type="color"
+                                    value={
+                                      hasCustomText && footerForm.textColor?.startsWith("#")
+                                        ? footerForm.textColor
+                                        : templateDef.text.startsWith("#")
+                                          ? templateDef.text
+                                          : "#ffffff"
+                                    }
+                                    onChange={(e) =>
+                                      setFooterForm((p) => ({
+                                        ...p,
+                                        textColor: e.target.value,
+                                      }))
+                                    }
+                                    className="sr-only"
+                                  />
+                                  Pick
+                                </label>
+                              </div>
+
+                              {/* Quick Presets */}
+                              <div className="flex items-center gap-1.5 pt-0.5 flex-wrap">
+                                <span className="text-[10px] text-gray-400 font-medium shrink-0">Presets:</span>
+                                {[
+                                  { hex: "#ffffff", label: "White" },
+                                  { hex: "#1f2937", label: "Slate-800" },
+                                  { hex: "#000000", label: "Black" },
+                                  { hex: "#64748b", label: "Slate-500" },
+                                  { hex: "#f1f5f9", label: "Off-white" },
+                                ].map((chip) => (
+                                  <button
+                                    key={chip.hex}
+                                    type="button"
+                                    onClick={() =>
+                                      setFooterForm((p) => ({ ...p, textColor: chip.hex }))
+                                    }
+                                    className={`h-5 px-1.5 rounded border text-[10px] font-medium flex items-center gap-1 transition-all cursor-pointer ${
+                                      footerForm.textColor?.toLowerCase() === chip.hex.toLowerCase()
+                                        ? "border-indigo-600 ring-1 ring-indigo-300 bg-white"
+                                        : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50"
+                                    }`}
+                                    title={`Set text to ${chip.label} (${chip.hex})`}
+                                  >
+                                    <span
+                                      className="w-2.5 h-2.5 rounded-full border border-black/15 shrink-0"
+                                      style={{ backgroundColor: chip.hex }}
+                                    />
+                                    <span className="text-gray-700">{chip.label}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Live mini preview swatch */}
+                            <div
+                              className="rounded-lg p-3 border text-center transition-all shadow-xs"
+                              style={{
+                                backgroundColor: effectiveBg,
+                                color: effectiveText,
+                                borderColor: hasCustomText
+                                  ? `${footerForm.textColor}33`
+                                  : "rgba(128,128,128,0.2)",
+                              }}
+                            >
+                              <div className="text-[11px] font-bold tracking-wider uppercase opacity-85">
+                                Live Contrast Sample
+                              </div>
+                              <p className="text-xs font-semibold mt-1">
+                                Brand Headline &amp; Tagline Preview
+                              </p>
+                              <div className="text-[10px] opacity-75 mt-1 flex items-center justify-center gap-2 flex-wrap">
+                                <span>Shop</span>
+                                <span>•</span>
+                                <span>Our Story</span>
+                                <span>•</span>
+                                <span>Contact Us</span>
+                                <span>•</span>
+                                <span>© 2026</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
                       <div>
                         <label className="text-xs font-semibold text-gray-600">
                           Tagline / Description
@@ -3516,28 +6143,15 @@ export default function HomepageManager() {
                           placeholder="Short brand description shown in the footer"
                         />
                       </div>
-                      {key === "3" && (
-                        <div>
-                          <label className="text-xs font-semibold text-gray-600">
-                            Newsletter Section Title
-                          </label>
-                          <input
-                            className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                            value={footerForm.newsletterTitle ?? ""}
-                            onChange={(e) =>
-                              setFooterForm((p) => ({
-                                ...p,
-                                newsletterTitle: e.target.value,
-                              }))
-                            }
-                            placeholder="Stay in the loop"
-                          />
-                        </div>
-                      )}
 
                       {/* Social Media Links section */}
                       <div className="border-t border-gray-200 pt-3 mt-3 space-y-3">
-                        <p className="text-xs font-black uppercase text-gray-400 tracking-wider">Social Links</p>
+                        <div>
+                          <p className="text-xs font-black uppercase text-gray-400 tracking-wider">Social Links</p>
+                          <p className="text-[11px] text-gray-500 mt-0.5">
+                            Leave any field blank to hide that icon from your footer.
+                          </p>
+                        </div>
 
                         <div>
                           <label className="text-xs font-semibold text-gray-600">
@@ -3553,7 +6167,7 @@ export default function HomepageManager() {
                                 instagramLink: e.target.value,
                               }))
                             }
-                            placeholder="https://instagram.com/yourbrand"
+                            placeholder="https://instagram.com/yourbrand (leave empty to hide)"
                           />
                         </div>
 
@@ -3571,31 +6185,13 @@ export default function HomepageManager() {
                                 facebookLink: e.target.value,
                               }))
                             }
-                            placeholder="https://facebook.com/yourbrand"
+                            placeholder="https://facebook.com/yourbrand (leave empty to hide)"
                           />
                         </div>
 
                         <div>
                           <label className="text-xs font-semibold text-gray-600">
-                            Twitter / X Link
-                          </label>
-                          <input
-                            type="url"
-                            className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                            value={footerForm.twitterLink ?? ""}
-                            onChange={(e) =>
-                              setFooterForm((p) => ({
-                                ...p,
-                                twitterLink: e.target.value,
-                              }))
-                            }
-                            placeholder="https://twitter.com/yourbrand"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="text-xs font-semibold text-gray-600">
-                            Contact Email / Mail Link
+                            Contact Email / Gmail Link
                           </label>
                           <input
                             className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
@@ -3606,7 +6202,7 @@ export default function HomepageManager() {
                                 mailLink: e.target.value,
                               }))
                             }
-                            placeholder="info@yourbrand.com"
+                            placeholder="info@yourbrand.com (leave empty to hide)"
                           />
                         </div>
                       </div>
@@ -3662,96 +6258,8 @@ export default function HomepageManager() {
         </div>
       )}
 
-      {/* -- NAVIGATION TAB --------------------------------------------------- */}
-      {activeTab === "NAVIGATION" && (
-        <div className="bg-white rounded-2xl border border-gray-200/80 shadow-sm p-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
-            <div>
-              <h2 className="text-lg font-bold text-gray-900">Category Browse Bar</h2>
-              <p className="text-sm text-gray-500 mt-1 max-w-2xl">
-                Controls the site-wide category menu shown under the navbar on every page.
-                Subcategories are pulled in automatically from Catalog Management — pick which
-                top-level categories appear here, and in what order.
-              </p>
-            </div>
-            <button
-              onClick={saveNavSettings}
-              disabled={!navDirty || navSaving}
-              className="shrink-0 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wide bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
-              {navSaving ? "Saving..." : "Save Changes"}
-            </button>
-          </div>
 
-          {navLoading ? (
-            <div className="py-12 text-center text-sm text-gray-400">Loading categories...</div>
-          ) : navCategories.length === 0 ? (
-            <div className="py-12 text-center text-sm text-gray-400">
-              No top-level categories yet — add one in Catalog Management first.
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {navCategories.map((cat, index) => (
-                <div
-                  key={cat.id}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition-colors ${
-                    cat.showInNav
-                      ? "border-gray-200 bg-white"
-                      : "border-gray-100 bg-gray-50/60"
-                  }`}
-                >
-                  <div className="flex flex-col gap-0.5 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => moveNavCategory(cat.id, "up")}
-                      disabled={index === 0}
-                      className="p-0.5 rounded text-gray-400 hover:text-gray-900 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
-                    >
-                      <ChevronUpIcon className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => moveNavCategory(cat.id, "down")}
-                      disabled={index === navCategories.length - 1}
-                      className="p-0.5 rounded text-gray-400 hover:text-gray-900 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
-                    >
-                      <ChevronDownIcon className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-
-                  <span
-                    className={`flex-1 text-sm font-semibold ${
-                      cat.showInNav ? "text-gray-900" : "text-gray-400"
-                    }`}
-                  >
-                    {cat.name}
-                  </span>
-
-                  <span className="text-xs text-gray-400 font-mono w-6 text-right">
-                    #{index + 1}
-                  </span>
-
-                  <button
-                    type="button"
-                    onClick={() => toggleNavVisibility(cat.id)}
-                    className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors cursor-pointer ${
-                      cat.showInNav ? "bg-indigo-600" : "bg-gray-300"
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-                        cat.showInNav ? "translate-x-4" : "translate-x-0.5"
-                      }`}
-                    />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── THEME TAB ────────────────────────────────────────────────────────── */}
+      {/* -¢------¬-¢------¬ THEME TAB -¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬ */}
       {activeTab === "THEME" && (
         <div className="animate-fadeIn">
           <div className="bg-white border border-gray-200 shadow-sm rounded-xl p-5 space-y-4">
@@ -3806,15 +6314,198 @@ export default function HomepageManager() {
               })}
             </div>
 
-            <div className="pt-2 border-t border-gray-100 flex items-center justify-between gap-3">
-              {draftThemeId !== themeId ? (
+            {/* Button & CTA Color Override Section */}
+            {(() => {
+              const currentTheme = THEMES.find((t) => t.id === draftThemeId) || THEMES[0];
+              const effectiveButtonBg = draftButtonBg || currentTheme.primary;
+              const effectiveButtonText = draftButtonText || currentTheme.primaryInk;
+
+              return (
+                <div className="pt-5 border-t border-gray-100 space-y-4">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div>
+                      <h4 className="font-bold text-gray-900 text-xs sm:text-sm flex items-center gap-2">
+                        <span>Button & CTA Colors</span>
+                        {draftButtonBg ? (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            Custom Color Active
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                            Following Storefront Theme
+                          </span>
+                        )}
+                      </h4>
+                      <p className="text-[11px] text-gray-400 mt-0.5 leading-relaxed">
+                        Customize Call-To-Action buttons across the storefront (Add to Cart, Buy Now, Checkout). If cleared, buttons smoothly draw back to the active theme color.
+                      </p>
+                    </div>
+                    {draftButtonBg && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDraftButtonBg("");
+                          setDraftButtonText("");
+                        }}
+                        className="text-xs font-semibold text-rose-600 hover:text-rose-700 hover:underline cursor-pointer flex items-center gap-1"
+                      >
+                        Reset to Theme Default
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Button Background Color */}
+                    <div className="p-3.5 bg-gray-50/80 rounded-xl border border-gray-200/80 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-gray-700">Button Background</label>
+                        <span className="text-[11px] font-mono text-gray-500">
+                          {draftButtonBg || `${currentTheme.primary} (Theme)`}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={draftButtonBg || currentTheme.primary}
+                          onChange={(e) => setDraftButtonBg(e.target.value)}
+                          className="w-10 h-10 p-0.5 border border-gray-300 rounded-lg cursor-pointer bg-white"
+                          title="Pick button background color"
+                        />
+                        <input
+                          type="text"
+                          value={draftButtonBg}
+                          placeholder={currentTheme.primary}
+                          onChange={(e) => {
+                            const val = e.target.value.trim();
+                            setDraftButtonBg(val);
+                          }}
+                          maxLength={7}
+                          className="flex-1 min-w-0 h-10 px-3 border border-gray-300 rounded-lg text-xs font-mono uppercase bg-white outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+                        />
+                      </div>
+                      {/* Presets */}
+                      <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                        <span className="text-[10px] text-gray-400 font-semibold mr-1">Presets:</span>
+                        {[
+                          { name: "Forest", hex: "#0c6b5e" },
+                          { name: "Emerald", hex: "#0b5d45" },
+                          { name: "Minimal", hex: "#14110f" },
+                          { name: "Navy", hex: "#1e3a8a" },
+                          { name: "Crimson", hex: "#d62828" },
+                          { name: "Gold", hex: "#c9a227" },
+                          { name: "Rose", hex: "#a6425b" },
+                          { name: "Terra", hex: "#6b4226" },
+                        ].map((p) => (
+                          <button
+                            key={p.hex}
+                            type="button"
+                            onClick={() => setDraftButtonBg(p.hex)}
+                            title={p.name}
+                            className={`w-5 h-5 rounded-full border border-black/15 transition-transform hover:scale-110 cursor-pointer ${
+                              draftButtonBg.toLowerCase() === p.hex.toLowerCase() ? "ring-2 ring-indigo-600 ring-offset-1 scale-110" : ""
+                            }`}
+                            style={{ backgroundColor: p.hex }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Button Text (Ink) Color */}
+                    <div className="p-3.5 bg-gray-50/80 rounded-xl border border-gray-200/80 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-gray-700">Button Text Color</label>
+                        <span className="text-[11px] font-mono text-gray-500">
+                          {draftButtonText || `${currentTheme.primaryInk} (Theme)`}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={draftButtonText || currentTheme.primaryInk}
+                          onChange={(e) => setDraftButtonText(e.target.value)}
+                          className="w-10 h-10 p-0.5 border border-gray-300 rounded-lg cursor-pointer bg-white"
+                          title="Pick button text color"
+                        />
+                        <input
+                          type="text"
+                          value={draftButtonText}
+                          placeholder={currentTheme.primaryInk}
+                          onChange={(e) => {
+                            const val = e.target.value.trim();
+                            setDraftButtonText(val);
+                          }}
+                          maxLength={7}
+                          className="flex-1 min-w-0 h-10 px-3 border border-gray-300 rounded-lg text-xs font-mono uppercase bg-white outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+                        />
+                      </div>
+                      {/* Quick text options */}
+                      <div className="flex items-center gap-2 pt-1">
+                        <span className="text-[10px] text-gray-400 font-semibold mr-1">Quick:</span>
+                        {[
+                          { label: "White (#FFF)", hex: "#ffffff" },
+                          { label: "Dark (#111)", hex: "#111111" },
+                          { label: "Ivory (#FDF6E2)", hex: "#fdf6e2" },
+                        ].map((opt) => (
+                          <button
+                            key={opt.hex}
+                            type="button"
+                            onClick={() => setDraftButtonText(opt.hex)}
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded border transition-all cursor-pointer ${
+                              draftButtonText.toLowerCase() === opt.hex.toLowerCase()
+                                ? "bg-indigo-600 text-white border-indigo-600 shadow-xs"
+                                : "bg-white text-gray-700 border-gray-200 hover:bg-gray-100"
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Live Button Preview Box */}
+                  <div className="p-4 bg-white rounded-xl border border-dashed border-gray-300 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div>
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Live Button Preview:</span>
+                      <p className="text-[10px] text-gray-400">Shows how primary action buttons look across product and checkout pages.</p>
+                    </div>
+                    <div className="flex items-center gap-3 w-full sm:w-auto shrink-0">
+                      <button
+                        type="button"
+                        style={{ backgroundColor: effectiveButtonBg, color: effectiveButtonText }}
+                        className="px-5 py-2.5 rounded-sm text-xs font-bold uppercase tracking-wider shadow-sm pointer-events-none"
+                      >
+                        ADD TO CART
+                      </button>
+                      <button
+                        type="button"
+                        style={{ backgroundColor: effectiveButtonBg, color: effectiveButtonText, borderColor: effectiveButtonBg }}
+                        className="px-5 py-2.5 rounded-sm text-xs font-bold uppercase tracking-wider shadow-sm border-2 pointer-events-none"
+                      >
+                        BUY IT NOW
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            <div className="pt-3 border-t border-gray-100 flex items-center justify-between gap-3">
+              {draftThemeId !== themeId ||
+              draftButtonBg !== customButtonBg ||
+              draftButtonText !== customButtonText ? (
                 <span className="text-xs font-semibold text-amber-600">Unsaved — click Save to apply</span>
               ) : (
                 <span className="text-xs text-gray-400">Matches what's live on the storefront</span>
               )}
               <button
                 onClick={saveTheme}
-                disabled={draftThemeId === themeId || savingTheme}
+                disabled={
+                  (draftThemeId === themeId &&
+                    draftButtonBg === customButtonBg &&
+                    draftButtonText === customButtonText) ||
+                  savingTheme
+                }
                 className="shrink-0 px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold tracking-wide uppercase hover:bg-indigo-700 active:scale-[0.98] transition-all duration-150 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {savingTheme ? "Saving..." : "Save"}
@@ -3824,7 +6515,7 @@ export default function HomepageManager() {
         </div>
       )}
 
-      {/* â”€â”€ BANNER TABS (DISCOUNT / CAROUSEL / PROMO) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬ BANNER TABS (DISCOUNT / CAROUSEL / PROMO) ---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬ */}
       {(activeTab === "DISCOUNT_PANEL" ||
         activeTab === "CAROUSEL_ITEM" ||
         activeTab === "PROMO_BANNER") && (
@@ -3865,21 +6556,23 @@ export default function HomepageManager() {
                               }
                             />
                           </div>
-                          <div>
-                            <label className="text-xs font-semibold text-indigo-700 uppercase tracking-wide">
-                              Subtitle
-                            </label>
-                            <input
-                              className="mt-1 w-full border border-indigo-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                              value={sectionForm.subtitle}
-                              onChange={(e) =>
-                                setSectionForm((p) => ({
-                                  ...p,
-                                  subtitle: e.target.value,
-                                }))
-                              }
-                            />
-                          </div>
+                          {sectionKey !== "DISCOUNT" && (
+                            <div>
+                              <label className="text-xs font-semibold text-indigo-700 uppercase tracking-wide">
+                                Subtitle
+                              </label>
+                              <input
+                                className="mt-1 w-full border border-indigo-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                                value={sectionForm.subtitle}
+                                onChange={(e) =>
+                                  setSectionForm((p) => ({
+                                    ...p,
+                                    subtitle: e.target.value,
+                                  }))
+                                }
+                              />
+                            </div>
+                          )}
                           <div className="flex gap-2 pt-1">
                             <button
                               onClick={() => saveHeader()}
@@ -3904,7 +6597,7 @@ export default function HomepageManager() {
                           <p className="text-lg font-bold text-gray-900">
                             {current.title}
                           </p>
-                          {current.subtitle && (
+                          {sectionKey !== "DISCOUNT" && current.subtitle && (
                             <p className="text-sm text-gray-500">
                               {current.subtitle}
                             </p>
@@ -3937,6 +6630,20 @@ export default function HomepageManager() {
                   onSelect={handleDiscountTemplateSelect}
                   disabled={!canBannerEdit}
                 />
+                <div className="bg-indigo-50/80 border border-indigo-150 rounded-xl p-3 text-xs text-indigo-950 flex items-start gap-2.5">
+                  <span className="text-base select-none">📐</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-indigo-950">
+                      Recommended Banner Size for {DISCOUNT_TEMPLATE_LABELS[String(discountTemplate)]?.name || "Split Grid"}:
+                    </p>
+                    <p className="text-indigo-900 text-xs mt-1">
+                      • <span className="font-semibold text-indigo-950">Banner Dimensions:</span> <span className="font-bold">{DISCOUNT_TEMPLATE_LABELS[String(discountTemplate)]?.sizeHint}</span> &bull; Ratio: <span className="font-bold">{DISCOUNT_TEMPLATE_LABELS[String(discountTemplate)]?.ratio}</span>
+                    </p>
+                    <p className="text-indigo-600 text-[11px] mt-1">
+                      {DISCOUNT_TEMPLATE_LABELS[String(discountTemplate)]?.desc}
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
             {activeTab === "PROMO_BANNER" && (
@@ -3986,7 +6693,7 @@ export default function HomepageManager() {
                 No items yet. Click "Add" to create one.
               </div>
             ) : activeTab === "CAROUSEL_ITEM" ? (
-              /* ── NEW VERTICAL PRESENTATION FOR CURATED CAROUSEL ── */
+              /* -¢------¬-¢------¬ NEW VERTICAL PRESENTATION FOR CURATED CAROUSEL -¢------¬-¢------¬ */
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
                 {filtered.map((banner) => (
                   <div
@@ -4016,37 +6723,47 @@ export default function HomepageManager() {
                     </div>
 
                     {/* Text Details Area */}
-                    <div className="p-4 flex-1 flex flex-col justify-between bg-white">
-                      <div className="mb-3">
-                        <h4 className="font-bold text-gray-950 text-sm tracking-tight truncate">
-                          {banner.title}
+                    <div className="p-4 flex-1 flex flex-col justify-between bg-white min-w-0">
+                      <div className="mb-3 min-w-0">
+                        <h4 className="font-bold text-gray-950 text-sm tracking-tight truncate" title={banner.title}>
+                          {banner.title || "(Graphic banner - no text)"}
                         </h4>
                         {banner.description && (
-                          <p className="text-gray-500 text-[11px] leading-relaxed line-clamp-2 mt-0.5">
+                          <p className="text-gray-500 text-[11px] leading-relaxed line-clamp-2 mt-0.5 break-words">
                             {banner.description}
+                          </p>
+                        )}
+                        {banner.link && (
+                          <p className="text-indigo-600 text-[10px] truncate mt-1 flex items-center gap-1 font-mono min-w-0" title={banner.link}>
+                            <span className="text-gray-400 shrink-0">🔗</span>
+                            <span className="truncate">{banner.link}</span>
                           </p>
                         )}
                       </div>
 
                       {/* Compact Operations Bar */}
-                      <div className="flex items-center gap-1.5 pt-3 border-t border-gray-100">
+                      <div className="flex items-center gap-1.5 pt-3 border-t border-gray-100 min-w-0 w-full">
                         <button
+                          type="button"
                           onClick={() => handleToggle(banner)}
-                          className="px-2.5 py-1.5 text-[11px] font-semibold text-gray-600 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
+                          className="px-2.5 py-1.5 text-[11px] font-semibold text-gray-600 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors shrink-0 cursor-pointer"
                         >
                           {banner.isActive ? "Hide" : "Show"}
                         </button>
                         <button
+                          type="button"
                           onClick={() => openEdit(banner)}
-                          className="flex-1 py-1.5 text-[11px] font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors flex items-center justify-center gap-1"
+                          className="flex-1 py-1.5 text-[11px] font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors flex items-center justify-center gap-1 min-w-0 cursor-pointer"
                         >
-                          <PencilSquareIcon className="w-3.5 h-3.5" />
-                          Edit
+                          <PencilSquareIcon className="w-3.5 h-3.5 shrink-0" />
+                          <span className="truncate">Edit</span>
                         </button>
                         <button
+                          type="button"
                           onClick={() => handleDelete(banner)}
                           disabled={deletingId === banner.id}
-                          className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors"
+                          className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors shrink-0 cursor-pointer"
+                          title="Delete banner"
                         >
                           <TrashIcon className="w-3.5 h-3.5" />
                         </button>
@@ -4056,18 +6773,18 @@ export default function HomepageManager() {
                 ))}
               </div>
             ) : (
-              /* ── RESTORED PREMIUM WIDE LAYOUT FOR DISCOUNT PANELS & CAROUSEL BANNERS ── */
+              /* -¢------¬-¢------¬ RESTORED PREMIUM WIDE LAYOUT FOR DISCOUNT PANELS & CAROUSEL BANNERS -¢------¬-¢------¬ */
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
                 {filtered.map((banner) => (
                   <div
                     key={banner.id}
-                    className={`relative flex flex-col sm:flex-row bg-white rounded-2xl border overflow-hidden shadow-sm hover:shadow-md transition-all duration-300 ${banner.isActive
+                    className={`relative flex flex-col sm:flex-row bg-white rounded-2xl border overflow-hidden shadow-sm hover:shadow-md transition-all duration-300 min-w-0 ${banner.isActive
                       ? "border-gray-200/80"
                       : "border-gray-300 bg-gray-50/40 opacity-70"
                       }`}
                   >
                     {/* Aspect Filled Image Block */}
-                    <div className="relative w-full sm:w-2/5 min-h-[220px] sm:min-h-full bg-slate-100 flex-shrink-0">
+                    <div className="relative w-full sm:w-2/5 min-h-[175px] sm:min-h-full bg-slate-100 flex-shrink-0">
                       <img
                         src={banner.image}
                         alt={banner.title}
@@ -4080,11 +6797,11 @@ export default function HomepageManager() {
                     </div>
 
                     {/* Operational Controls & Info Canvas */}
-                    <div className="flex-1 flex flex-col justify-between p-5">
-                      <div>
+                    <div className="flex-1 flex flex-col justify-between p-4 sm:p-4.5 min-w-0">
+                      <div className="min-w-0">
                         <div className="flex items-center justify-between gap-2 mb-2">
                           <span
-                            className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider inline-flex items-center gap-1${banner.isActive
+                            className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider inline-flex items-center gap-1 ${banner.isActive
                               ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                               : "bg-rose-50 text-rose-600 border border-rose-200"
                               }`}
@@ -4094,44 +6811,54 @@ export default function HomepageManager() {
                           </span>
                         </div>
 
-                        <h4 className="font-bold text-gray-950 text-base tracking-tight line-clamp-1 mb-1">
-                          {banner.title}
+                        <h4 className="font-bold text-gray-950 text-base tracking-tight truncate mb-1" title={banner.title}>
+                          {banner.title || "(Graphic banner - no text)"}
                         </h4>
 
                         {banner.discount && (
-                          <p className="text-indigo-600 font-extrabold text-sm tracking-wide bg-indigo-50/60 inline-block px-2 py-0.5 rounded-md mb-2">
-                            {banner.discount}
-                          </p>
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold tracking-wide bg-indigo-50 text-indigo-700 border border-indigo-100/80 mb-2">
+                            {formatDiscountBadge(banner.discount)}
+                          </span>
                         )}
 
                         {banner.description && (
-                          <p className="text-gray-500 text-xs leading-relaxed line-clamp-3">
+                          <p className="text-gray-500 text-xs leading-relaxed line-clamp-3 break-words">
                             {banner.description}
                           </p>
+                        )}
+                        {banner.link && (
+                          <div className="flex items-center gap-1.5 text-xs text-indigo-600 mt-2 font-mono min-w-0" title={banner.link}>
+                            <span className="shrink-0 text-gray-400">🔗</span>
+                            <span className="truncate">{banner.link}</span>
+                          </div>
                         )}
                       </div>
 
                       {/* Integrated Action Bar Baseline */}
-                      <div className="flex items-center gap-2 pt-4 mt-4 border-t border-gray-100/70">
+                      <div className="flex items-center gap-2 pt-3 mt-3 border-t border-gray-100/70 w-full min-w-0">
                         <button
+                          type="button"
                           onClick={() => handleToggle(banner)}
-                          className="flex-1 py-2 text-xs font-semibold text-gray-600 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors"
+                          className="px-3 py-2 text-xs font-semibold text-gray-600 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors shrink-0 cursor-pointer"
                         >
-                        {banner.isActive ? "Hide" : "Show"}
+                          {banner.isActive ? "Hide" : "Show"}
                         </button>
 
                         <button
+                          type="button"
                           onClick={() => openEdit(banner)}
-                          className="flex-1 py-2 text-xs font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-all flex items-center justify-center gap-1"
+                          className="flex-1 py-2 text-xs font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-all flex items-center justify-center gap-1 min-w-0 cursor-pointer"
                         >
-                          <PencilSquareIcon className="w-3.5 h-3.5" />
-                          Edit
+                          <PencilSquareIcon className="w-3.5 h-3.5 shrink-0" />
+                          <span className="truncate">Edit</span>
                         </button>
 
                         <button
+                          type="button"
                           onClick={() => handleDelete(banner)}
                           disabled={deletingId === banner.id}
-                          className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-all disabled:opacity-40"
+                          className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-all disabled:opacity-40 shrink-0 cursor-pointer"
+                          title="Delete banner"
                         >
                           <TrashIcon className="w-4 h-4" />
                         </button>
@@ -4144,15 +6871,27 @@ export default function HomepageManager() {
           </>
         )}
 
-      {/* ── FEATURED TAB ────────────────────────────────────────────────────────────────────────── */}
+      {/* -¢------¬-¢------¬ FEATURED TAB -¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬ */}
     
     
 
     {activeTab === "FEATURED" && (
       <div className="space-y-6 w-full max-w-full overflow-hidden animate-fadeIn">
-        {/* Layout */}
-        <div>
-          <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3">Layout</h3>
+        {/* Featured Section 1 Layout (Curated / Handpicked Products) */}
+        <div className="bg-white border border-gray-200/90 rounded-2xl p-5 shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+            <div className="flex items-center gap-2">
+              <span className="w-6 h-6 rounded-lg bg-indigo-600 text-white font-bold text-xs flex items-center justify-center">
+                1
+              </span>
+              <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wider">
+                Featured Section 1 Layout (Curated / Handpicked Products)
+              </h3>
+            </div>
+            <span className="text-xs text-gray-500">
+              Active: <strong className="text-indigo-600 font-semibold">{FEATURED_TEMPLATE_LABELS[String(featuredTemplate)]?.name || "Horizontal Scroll"}</strong>
+            </span>
+          </div>
           <SectionTemplatePicker
             labels={FEATURED_TEMPLATE_LABELS}
             activeTemplate={featuredTemplate}
@@ -4594,6 +7333,315 @@ export default function HomepageManager() {
             </div>
           </div>
         )}
+
+        {/* -¢------¬-¢------¬ ADDITIONAL FEATURED SECTIONS (CATEGORY SHOWCASES) -¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬ */}
+        <div className="pt-6 border-t-2 border-dashed border-gray-200 space-y-6">
+          {/* Header Card with Explanatory alternating workflow */}
+          <div className="bg-gradient-to-r from-indigo-50/70 via-purple-50/40 to-white border border-indigo-100/90 rounded-2xl p-5 sm:p-6 shadow-sm">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div className="space-y-1.5 max-w-2xl">
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-indigo-100 text-indigo-700 border border-indigo-200">
+                  <SparklesIcon className="w-3.5 h-3.5" />
+                  Homepage Interleaved Showcase
+                </div>
+                <h3 className="text-lg font-bold text-gray-900 tracking-tight">
+                  Additional Featured Sections (Category Showcases 2 – 3)
+                </h3>
+                <p className="text-xs text-gray-600 leading-relaxed">
+                  Configure up to 2 category showcases that alternate with your Pre-Footer Banners across the homepage. Products from each category are automatically fetched and presented with a dedicated <span className="font-semibold text-gray-800">"View All [Category] →"</span> button.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={saveFeaturedCategoriesConfig}
+                disabled={savingFeaturedCategories}
+                className="shrink-0 inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wide bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow-indigo-100"
+              >
+                {savingFeaturedCategories ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircleIcon className="w-4 h-4" />
+                    Save Category Showcases
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Alternating Workflow Flow Diagram Pill */}
+            <div className="mt-4 pt-4 border-t border-indigo-100/80">
+              <div className="text-[11px] font-bold text-indigo-900 mb-2 flex items-center gap-1.5">
+                <span>🔄 Alternating Showcase Layout:</span>
+                <span className="text-[10px] font-normal text-indigo-700">
+                  (Banners &amp; Sections alternate down the homepage; each section can have its own independent layout)
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-gray-700">
+                <span className="px-2 py-1 bg-white rounded-md border border-indigo-200 shadow-2xs">Banner 1</span>
+                <span className="text-indigo-400">→</span>
+                <span className="px-2 py-1 bg-amber-50 rounded-md border border-amber-200 text-amber-900 shadow-2xs">
+                  Section 1: {FEATURED_TEMPLATE_LABELS[String(featuredTemplate)]?.name || "Scroll"}
+                </span>
+                <span className="text-indigo-400">→</span>
+                <span className="px-2 py-1 bg-white rounded-md border border-indigo-200 shadow-2xs">Banner 2</span>
+                <span className="text-indigo-400">→</span>
+                <span className="px-2 py-1 bg-purple-50 rounded-md border border-purple-200 text-purple-900 shadow-2xs">
+                  Section 2: {FEATURED_TEMPLATE_LABELS[String(featuredCatConfig.slots?.[0]?.template || 1)]?.name || "Scroll"}
+                </span>
+                <span className="text-indigo-400">→</span>
+                <span className="px-2 py-1 bg-white rounded-md border border-indigo-200 shadow-2xs">Banner 3</span>
+                <span className="text-indigo-400">→</span>
+                <span className="px-2 py-1 bg-purple-50 rounded-md border border-purple-200 text-purple-900 shadow-2xs">
+                  Section 3: {FEATURED_TEMPLATE_LABELS[String(featuredCatConfig.slots?.[1]?.template || 1)]?.name || "Scroll"}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* 2 Category Slots */}
+          <div className="grid grid-cols-1 gap-5">
+            {[0, 1].map((slotIdx) => {
+              const slot = (featuredCatConfig.slots || DEFAULT_FEATURED_CATEGORIES_CONFIG.slots)[slotIdx] || {
+                id: `slot-${slotIdx + 1}`,
+                categoryId: "",
+                customTitle: "",
+                customSubtitle: "",
+                limit: 8,
+                isActive: true,
+                template: 1,
+              };
+
+              const isActive = slot.isActive !== false;
+              const hasCategory = Boolean(slot.categoryId && slot.categoryId.trim() !== "");
+              const selectedCat = allCategoriesList.find((c) => c.id === slot.categoryId);
+              const selectedCatName = selectedCat?.name.replace(/^—\s*/, "") || "";
+
+              return (
+                <div
+                  key={slotIdx}
+                  className={`bg-white border rounded-2xl shadow-sm transition-all ${
+                    hasCategory && isActive
+                      ? "border-gray-200"
+                      : hasCategory && !isActive
+                      ? "border-amber-200 bg-amber-50/15"
+                      : "border-gray-200/80"
+                  }`}
+                >
+                  {/* Card Header */}
+                  <div className="px-5 py-3.5 bg-gray-50/80 border-b border-gray-100 flex items-center justify-between gap-3 rounded-t-2xl">
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-7 h-7 rounded-lg bg-indigo-600 text-white font-bold text-xs flex items-center justify-center shadow-2xs">
+                        {slotIdx + 2}
+                      </span>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-gray-900">
+                            Featured Section {slotIdx + 2}
+                          </span>
+                          <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                            Slot {slotIdx + 1}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-gray-500">
+                          {selectedCatName ? `Category: ${selectedCatName}` : "No category selected"}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Enable Toggle Switch */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-gray-500 hidden sm:inline">
+                        {isActive ? "Enabled" : "Disabled"}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => updateFeaturedCategorySlot(slotIdx, { isActive: !isActive })}
+                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                          isActive ? "bg-indigo-600" : "bg-gray-300"
+                        }`}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                            isActive ? "translate-x-5" : "translate-x-0"
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Card Inputs */}
+                  <div className="p-5 space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Target Category Select */}
+                      <div>
+                        <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1.5">
+                          Target Category <span className="text-indigo-600 font-semibold">*</span>
+                        </label>
+                        <CustomDropdownSelect
+                          value={slot.categoryId || ""}
+                          onChange={(val) => updateFeaturedCategorySlot(slotIdx, { categoryId: String(val) })}
+                          options={[
+                            { value: "", label: "-- Select a Category --" },
+                            ...allCategoriesList.map((cat) => ({
+                              value: cat.id,
+                              label: cat.name,
+                            })),
+                          ]}
+                          placeholder="-- Select a Category --"
+                          searchable={allCategoriesList.length > 5}
+                        />
+                        <p className="text-[11px] text-gray-500 mt-1">
+                          Products from this category will automatically be fetched.
+                        </p>
+                      </div>
+
+                      {/* Display Limit Select */}
+                      <div>
+                        <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1.5">
+                          Max Products to Display
+                        </label>
+                        <CustomDropdownSelect
+                          value={slot.limit || 8}
+                          onChange={(val) => updateFeaturedCategorySlot(slotIdx, { limit: Number(val) })}
+                          options={[
+                            { value: 4, label: "4 Products" },
+                            { value: 8, label: "8 Products", badge: "Default" },
+                            { value: 12, label: "12 Products" },
+                            { value: 16, label: "16 Products" },
+                          ]}
+                        />
+                        <p className="text-[11px] text-gray-500 mt-1">
+                          How many products to show in this section before "View All".
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Custom Title Input */}
+                      <div>
+                        <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1.5">
+                          Custom Section Title <span className="text-gray-400 font-normal">(Optional)</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={slot.customTitle || ""}
+                          onChange={(e) => updateFeaturedCategorySlot(slotIdx, { customTitle: e.target.value })}
+                          placeholder={selectedCatName ? `Default: ${selectedCatName}` : "e.g. Best in Sarees"}
+                          className="w-full px-3.5 py-2.5 bg-slate-50 border border-gray-200 rounded-xl text-xs sm:text-sm font-medium text-gray-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                        />
+                      </div>
+
+                      {/* Custom Subtitle Input */}
+                      <div>
+                        <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-1.5">
+                          Subtitle <span className="text-gray-400 font-normal">(Optional)</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={slot.customSubtitle || ""}
+                          onChange={(e) => updateFeaturedCategorySlot(slotIdx, { customSubtitle: e.target.value })}
+                          placeholder="e.g. Handcrafted styles curated especially for you"
+                          className="w-full px-3.5 py-2.5 bg-slate-50 border border-gray-200 rounded-xl text-xs sm:text-sm font-medium text-gray-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Section Layout Selection */}
+                    <div className="pt-2 border-t border-gray-100">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-2">
+                        <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide">
+                          Featured Section {slotIdx + 2} Layout
+                        </label>
+                        <span className="text-xs text-gray-500">
+                          Active: <strong className="text-indigo-600 font-semibold">{FEATURED_TEMPLATE_LABELS[String(slot.template || 1)]?.name || "Horizontal Scroll"}</strong>
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                        {Object.entries(FEATURED_TEMPLATE_LABELS).map(([key, label]) => {
+                          const isSelected = String(slot.template || 1) === key;
+                          return (
+                            <button
+                              key={key}
+                              type="button"
+                              onClick={() => handleSlotTemplateSelect(slotIdx, Number(key))}
+                              className={`text-left border-2 rounded-xl p-3.5 transition-all flex flex-col justify-between cursor-pointer ${
+                                isSelected
+                                  ? "border-indigo-600 bg-indigo-50/80 shadow-xs ring-1 ring-indigo-500/20"
+                                  : "border-gray-200 bg-slate-50/60 hover:border-indigo-200 hover:bg-white"
+                              }`}
+                            >
+                              <div>
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="text-xs font-bold text-gray-900">{label.name}</span>
+                                  {isSelected && (
+                                    <span className="text-[9px] font-bold uppercase tracking-wider text-indigo-700 bg-indigo-100 px-1.5 py-0.5 rounded-full">
+                                      Active
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[11px] text-gray-500 line-clamp-2 leading-snug">{label.desc}</p>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Status Pill Indicator */}
+                    <div className="pt-2">
+                      {!isActive ? (
+                        <div className="flex items-center gap-2 p-2.5 rounded-lg bg-gray-50 border border-gray-200 text-[11px] text-gray-500 font-medium">
+                          <span>⚪</span>
+                          <span>Slot is disabled and will be omitted from the homepage.</span>
+                        </div>
+                      ) : !hasCategory ? (
+                        <div className="flex items-center gap-2 p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-800 font-medium">
+                          <span>⚠️</span>
+                          <span>No category selected. This slot is currently idle and will be skipped on the storefront.</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-800 font-medium">
+                          <span>✅</span>
+                          <span>
+                            Active: Will showcase up to <strong className="font-bold">{slot.limit || 8}</strong> products from{" "}
+                            <strong className="font-bold text-emerald-900">"{selectedCatName}"</strong> with a dedicated{" "}
+                            <strong className="font-bold">"View All {selectedCatName} →"</strong> button.
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Bottom Save Action Bar */}
+          <div className="flex items-center justify-end pt-3">
+            <button
+              type="button"
+              onClick={saveFeaturedCategoriesConfig}
+              disabled={savingFeaturedCategories}
+              className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wide bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow-indigo-100"
+            >
+              {savingFeaturedCategories ? (
+                <>
+                  <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Saving Category Showcases...
+                </>
+              ) : (
+                <>
+                  <CheckCircleIcon className="w-4 h-4" />
+                  Save Category Showcases
+                </>
+              )}
+            </button>
+          </div>
+        </div>
       </div>
     )}
 
@@ -4633,6 +7681,9 @@ export default function HomepageManager() {
                 <StorefrontPreviewFrame
                   anchor={previewAnchor}
                   previewThemeId={activeTab === "THEME" ? draftThemeId : undefined}
+                  previewButtonBg={activeTab === "THEME" ? (draftButtonBg || null) : undefined}
+                  previewButtonText={activeTab === "THEME" ? (draftButtonText || null) : undefined}
+                  previewCategoryShape={draftCategoryShape}
                   reloadToken={previewReloadToken}
                   className="w-full h-[640px] border-0"
                 />
@@ -4642,7 +7693,7 @@ export default function HomepageManager() {
         </div>
       </div>
 
-      {/* ── DESKTOP PREVIEW MODAL ───────────────────────────────────────────────
+      {/* -¢------¬-¢------¬ DESKTOP PREVIEW MODAL -¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬-¢------¬
           Own iframe instance, mounted only while open — the sidebar's persistent
           preview above is completely unaffected by opening/closing this. */}
       {desktopPreviewOpen && (
@@ -4666,6 +7717,9 @@ export default function HomepageManager() {
               <StorefrontPreviewFrame
                 anchor={previewAnchor}
                 previewThemeId={activeTab === "THEME" ? draftThemeId : undefined}
+                previewButtonBg={activeTab === "THEME" ? (draftButtonBg || null) : undefined}
+                previewButtonText={activeTab === "THEME" ? (draftButtonText || null) : undefined}
+                  previewCategoryShape={draftCategoryShape}
                 reloadToken={previewReloadToken}
                 className="w-full h-full border-0"
               />
@@ -4674,7 +7728,7 @@ export default function HomepageManager() {
         </div>
       )}
 
-      {/* â”€â”€ BANNER MODAL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬ BANNER MODAL ---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬---¢-¢---¬Â-¢---¬ */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
@@ -4707,21 +7761,59 @@ export default function HomepageManager() {
                     </span>
                   )}
                 </label>
+
+                {form.type === "DISCOUNT_PANEL" && (
+                  <div className="mb-2.5 bg-indigo-50/80 border border-indigo-150 rounded-xl p-2.5 text-xs text-indigo-950 flex items-start gap-2.5">
+                    <span className="text-base select-none">📐</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-indigo-950">
+                        Recommended for {DISCOUNT_TEMPLATE_LABELS[String(discountTemplate)]?.name || "Split Grid"}:
+                      </p>
+                      <p className="text-indigo-900 text-xs mt-0.5">
+                        Ratio: <span className="font-bold text-indigo-950">{DISCOUNT_TEMPLATE_LABELS[String(discountTemplate)]?.ratio || "16:9"}</span> &bull; Size: <span className="font-bold text-indigo-950">{DISCOUNT_TEMPLATE_LABELS[String(discountTemplate)]?.sizeHint || "1200 × 675 px (or 1600 × 900 px)"}</span>
+                      </p>
+                      <p className="text-indigo-600 text-[10px] mt-0.5 italic">
+                        All text and graphics should be designed directly into the banner. The storefront displays full, clean banner images starting from the edge.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {form.type === "PROMO_BANNER" && (
+                  <div className="mb-2.5 bg-indigo-50/80 border border-indigo-150 rounded-xl p-2.5 text-xs text-indigo-950 flex items-start gap-2.5">
+                    <span className="text-base select-none">📐 </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-indigo-950">
+                        Recommended for {CAROUSEL_TEMPLATE_LABELS[String(carouselTemplate)]?.name || "Active Layout"}:
+                      </p>
+                      <p className="text-indigo-800 text-[11px] mt-0.5">
+                        Ratio: <span className="font-bold text-indigo-900">{CAROUSEL_TEMPLATE_LABELS[String(carouselTemplate)]?.ratio}</span> &bull; Size: <span className="font-bold text-indigo-900">{CAROUSEL_TEMPLATE_LABELS[String(carouselTemplate)]?.sizeHint}</span>
+                      </p>
+                    </div>
+                  </div>
+                )}
                 <div
-                  className="relative border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center h-44 cursor-pointer hover:border-indigo-400 transition-colors overflow-hidden"
+                  className="relative border-2 border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center h-48 cursor-pointer hover:border-indigo-400 transition-colors overflow-hidden bg-slate-50"
                   onClick={() => fileInputRef.current?.click()}
                 >
                   {imagePreview ? (
                     <img
                       src={imagePreview}
                       alt="Preview"
-                      className="absolute inset-0 w-full h-full object-cover rounded-xl"
+                      className="absolute inset-0 w-full h-full object-contain p-1.5 rounded-xl"
                     />
                   ) : (
                     <>
                       <PhotoIcon className="w-10 h-10 text-gray-300" />
-                      <p className="text-sm text-gray-400 mt-2">
-                        Click to upload
+                      <p className="text-sm font-medium text-gray-600 mt-2">
+                        Click to upload image
+                      </p>
+                      <p className="text-xs text-indigo-600 font-semibold mt-1">
+                        {form.type === "DISCOUNT_PANEL"
+                          ? `Recommended: ${DISCOUNT_TEMPLATE_LABELS[String(discountTemplate)]?.sizeHint || "1600 × 900 px"} (${DISCOUNT_TEMPLATE_LABELS[String(discountTemplate)]?.ratio || "16:9"})`
+                          : form.type === "PROMO_BANNER"
+                            ? `Recommended: ${CAROUSEL_TEMPLATE_LABELS[String(carouselTemplate)]?.sizeHint || "1920 × 1080 px"}`
+                            : "Recommended: 900 × 1200 px (3:4)"}
                       </p>
                     </>
                   )}
@@ -4735,15 +7827,14 @@ export default function HomepageManager() {
                 />
               </div>
 
-              {/* Title */}
+              {/* Title (Optional) */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Title <span className="text-red-500">*</span>
+                  Title (Optional)
                 </label>
                 <input
-                  required
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                  placeholder="Panel title"
+                  placeholder="Banner title (leave empty if text is designed on image)"
                   value={form.title}
                   onChange={(e) =>
                     setForm((p) => ({ ...p, title: e.target.value }))
@@ -4751,11 +7842,30 @@ export default function HomepageManager() {
                 />
               </div>
 
+              {/* Redirect Link to Product (Optional) */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Product / Redirect Link (Optional)
+                </label>
+                <input
+                  type="text"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  placeholder="e.g. /products/..., /products, or https://..."
+                  value={form.link}
+                  onChange={(e) =>
+                    setForm((p) => ({ ...p, link: e.target.value }))
+                  }
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  Clicking this banner will redirect customers directly to this product or page.
+                </p>
+              </div>
+
               {/* Discount (DISCOUNT_PANEL only) */}
               {form.type === "DISCOUNT_PANEL" && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Discount Label
+                    Discount Label (Optional)
                   </label>
                   <input
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
@@ -4773,12 +7883,12 @@ export default function HomepageManager() {
                 form.type === "PROMO_BANNER") && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Description
+                      Description (Optional)
                     </label>
                     <textarea
                       rows={2}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"
-                      placeholder="Short description"
+                      placeholder="Short description (optional)"
                       value={form.description}
                       onChange={(e) =>
                         setForm((p) => ({ ...p, description: e.target.value }))
@@ -4844,7 +7954,7 @@ export default function HomepageManager() {
         </div>
       )}
 
-      {/* ── DELETE BANNER CONFIRMATION MODAL ── */}
+      {/* -¢------¬-¢------¬ DELETE BANNER CONFIRMATION MODAL -¢------¬-¢------¬ */}
       {bannerToDelete && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-fadeIn">
           <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 max-w-sm w-full overflow-hidden animate-scaleIn">
@@ -4879,7 +7989,7 @@ export default function HomepageManager() {
                 {deletingId === bannerToDelete.id ? (
                   <>
                     <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Deleting…
+                    Deleting...
                   </>
                 ) : (
                   <>

@@ -1,19 +1,15 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
 import { Popover } from "@headlessui/react";
 import {
   ShoppingBag,
-  ArrowRight,
-  Filter,
   ArrowLeft,
-  X,
-  SlidersHorizontal,
   ChevronDown,
   RotateCcw,
-  Star,
+  Heart,
+  X,
 } from "lucide-react";
-import { MagnifyingGlassIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { toast } from "react-hot-toast";
 
 // Components
 import Navbar from "../components/Navbar";
@@ -22,11 +18,11 @@ import PageSeo from "../components/seo/PageSeo";
 import { BreadcrumbJsonLd } from "../components/seo/JsonLd";
 import api from "../utils/api";
 import { normalizeProduct, calculateDiscountedPrice } from "../utils/product";
-import AttributeFilterPanel, {
-  type ActiveFilters as DynFilters,
-  type AttributeFilterPanelHandle,
-} from "../components/AttributeFilterPanel";
+import { useWishlist } from "../context/WishlistContext";
+import { useAuth } from "../context/AuthContext";
+import { type FilterAttribute } from "../components/AttributeFilterPanel";
 import PriceRangeSlider from "../components/PriceRangeSlider";
+import AutoAlignPopoverPanel from "../components/AutoAlignPopoverPanel";
 
 interface CategoryProduct {
   id: string;
@@ -34,6 +30,8 @@ interface CategoryProduct {
   brand?: string;
   price: number;
   image?: string;
+  secondaryImage?: string | null;
+  images?: string[];
   stock?: number;
   sizes?: string[];
   size?: string;
@@ -41,9 +39,6 @@ interface CategoryProduct {
   discount?: number;
   category?: { name?: string } | string;
   categoryName?: string;
-  /** Set when this card represents one specific active variant of a product with
-   * options (e.g. Storage/Color) instead of a plain single-SKU product — see backend's
-   * expandProductsWithVariants. Null/absent for a plain product. */
   variantId?: string | null;
   variantOptions?: Record<string, string> | null;
 }
@@ -83,200 +78,145 @@ function classNames(...c: (string | false | undefined | null)[]) {
 
 // MODERN SKELETON LOADER
 const SkeletonCard = () => (
-  <div className="relative aspect-[3/4] w-full overflow-hidden rounded-3xl bg-gray-100 animate-pulse">
-    <div className="absolute top-4 right-4 h-10 w-10 rounded-full bg-gray-200" />
-    <div className="absolute bottom-4 left-4 right-4 h-20 rounded-2xl bg-gray-200" />
+  <div className="relative aspect-square w-full overflow-hidden rounded-2xl bg-stone-100 animate-pulse border border-gray-100">
+    <div className="absolute top-3 right-3 h-8 w-8 rounded-full bg-stone-200" />
   </div>
 );
 
-// MODERN PRODUCT CARD
-// Wishlist/add-to-cart both require a specific variant selection (size/color/etc), so
-// they live only on the product detail page's variant picker — this listing card is
-// just a "browse and open" surface, one card per product (see paginateListingRows'
-// per-product collapse on the backend).
-const ModernProductCard = React.memo(function ModernProductCard({ product }: { product: CategoryProduct }) {
+// MODERN PRODUCT CARD (Matches Tribal Ornaments Referral Image)
+const ModernProductCard = React.memo(function ModernProductCard({
+  product,
+}: {
+  product: CategoryProduct;
+}) {
   const navigate = useNavigate();
+  const { isProductInWishlist, toggleWishlist } = useWishlist();
+  const { user } = useAuth();
+  const [isWishlistLoading, setIsWishlistLoading] = useState(false);
+  const isWishlisted = isProductInWishlist(product.id);
 
-  const imageUrl =
-    product.image || "https://placehold.co/600x800?text=No+Image";
+  const primaryUrl = product.image || "https://placehold.co/600x600?text=No+Image";
+  const secondaryUrl =
+    product.secondaryImage ||
+    (product.images && product.images.length > 1 ? product.images[1] : null);
 
   const handleCardClick = () => {
     navigate(`/products/${product.id}`);
+    window.scrollTo(0, 0);
   };
 
-  const categoryName =
-    typeof product.category === "object"
-      ? product.category?.name
-      : product.category || product.categoryName;
+  const handleToggleWishlist = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isWishlistLoading) return;
 
-  const finalPrice =
-    (product.discount ?? 0) > 0
-      ? calculateDiscountedPrice(product.price, product.discount!)
-      : product.price;
+    if (!user.isAuthenticated) {
+      toast.error("Please login to add product to wishlist", { id: "login-to-wishlist" });
+      window.dispatchEvent(new CustomEvent("openCustomerAuth"));
+      return;
+    }
+
+    setIsWishlistLoading(true);
+    try {
+      const success = await toggleWishlist(product.id);
+      if (success) {
+        toast.success(isWishlisted ? "Removed from favourites" : "Added to favourites", {
+          id: "wishlist-toggle-category-card",
+        });
+      }
+    } catch {
+      toast.error("Could not update wishlist");
+    } finally {
+      setIsWishlistLoading(false);
+    }
+  };
+
+  const hasDiscount = Boolean(product.discount && product.discount > 0);
+  const finalPrice = hasDiscount
+    ? Math.round(calculateDiscountedPrice(product.price, product.discount!))
+    : Math.round(Number(product.price));
+  const originalPrice = Math.round(Number(product.price));
 
   return (
     <div
       onClick={handleCardClick}
-      className="group relative aspect-[3/4] w-full cursor-pointer overflow-hidden rounded-3xl bg-gray-50 transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl"
+      className="group flex flex-col w-full cursor-pointer select-none transition-transform duration-300"
     >
-      {/* Product Image */}
-      <img
-        src={imageUrl}
-        alt={product.name}
-        className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
-        loading="lazy"
-      />
+      {/* 1. Square Image Container with Rounded Corners */}
+      <div className="relative aspect-square w-full overflow-hidden rounded-2xl bg-stone-50 shadow-xs border border-gray-100">
+        <img
+          src={primaryUrl}
+          alt={product.name}
+          loading="lazy"
+          decoding="async"
+          className={`h-full w-full object-cover transition-all duration-500 ease-out group-hover:scale-105 ${
+            secondaryUrl ? "group-hover:opacity-0" : ""
+          }`}
+        />
 
-      {/* Gradient Vignette */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/0 to-black/10 opacity-60 transition-opacity duration-300 group-hover:opacity-80" />
+        {secondaryUrl && (
+          <img
+            src={secondaryUrl}
+            alt={`${product.name} alternate view`}
+            loading="lazy"
+            decoding="async"
+            className="absolute inset-0 h-full w-full object-cover opacity-0 transition-all duration-500 ease-out group-hover:opacity-100 group-hover:scale-105"
+          />
+        )}
 
-      {/* Top Badge */}
-      <div className="absolute top-4 left-4 right-4 flex items-center justify-between pointer-events-none">
-        <span className="pointer-events-auto rounded-full bg-white/90 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-900 shadow-sm backdrop-blur-md">
-          {categoryName || "Collection"}
-        </span>
+        {/* 2. Floating Circular Wishlist Button (Top Right) */}
+        <button
+          type="button"
+          aria-label="Save to wishlist"
+          onClick={handleToggleWishlist}
+          disabled={isWishlistLoading}
+          className="absolute right-2.5 top-2.5 sm:right-3 sm:top-3 z-10 flex h-8 w-8 sm:h-8.5 sm:w-8.5 items-center justify-center rounded-full bg-white/90 text-gray-700 shadow-2xs backdrop-blur-xs transition-all duration-200 hover:scale-110 hover:bg-white active:scale-90 border border-gray-200/60 disabled:opacity-60 cursor-pointer"
+        >
+          <Heart
+            className={classNames(
+              "h-4 w-4 transition-colors",
+              isWishlisted
+                ? "fill-red-500 text-red-500 stroke-red-500"
+                : "text-gray-700 stroke-[1.75]"
+            )}
+          />
+        </button>
       </div>
 
-      {/* Bottom Floating Info Card */}
-      <div className="absolute bottom-3 left-3 right-3 transition-transform duration-300 group-hover:-translate-y-1">
-        <div className="flex items-center justify-between rounded-2xl bg-white/90 p-3.5 shadow-lg backdrop-blur-md border border-white/40">
-          <div className="flex flex-col truncate pr-2">
-            {product.brand && (
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none mb-1 truncate">
-                {product.brand}
-              </span>
-            )}
-            <h3 className="truncate text-xs font-bold text-gray-900">
-              {product.name}
-            </h3>
-            {product.variantOptions && Object.keys(product.variantOptions).length > 0 && (
-              <span className="truncate text-[9px] font-medium text-gray-500">
-                {Object.entries(product.variantOptions)
-                  .map(([axis, value]) => `${axis}: ${value}`)
-                  .join(" · ")}
-              </span>
-            )}
+      {/* 3. Product Info Left-Aligned Below Image */}
+      <div className="mt-2.5 sm:mt-3 flex flex-col items-start text-left px-0.5 font-sans">
+        <h3 className="w-full text-xs sm:text-[13px] font-normal text-gray-800 leading-snug line-clamp-1 group-hover:text-black transition-colors text-left">
+          {product.name}
+        </h3>
 
-            <div className="flex items-center gap-2 mt-1">
-              <span className="text-xs font-extrabold text-gray-900">
-                ₹{finalPrice.toFixed(0)}
+        <div className="mt-1 flex items-center justify-start gap-2 text-xs sm:text-[13px] flex-wrap">
+          {hasDiscount ? (
+            <>
+              <span className="text-gray-400 line-through font-normal text-[11px] sm:text-xs">
+                ₹ {originalPrice.toLocaleString("en-IN")}
               </span>
-              {(product.discount ?? 0) > 0 && (
-                <>
-                  <span className="text-[10px] text-gray-400 line-through">
-                    ₹{product.price?.toFixed(0)}
-                  </span>
-                  <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full">
-                    {product.discount}% OFF
-                  </span>
-                </>
-              )}
-            </div>
-          </div>
-
-          <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-900 group-hover:bg-black group-hover:text-white transition-colors duration-300">
-            <ArrowRight className="h-3.5 w-3.5" />
-          </div>
+              <span className="text-gray-950 font-medium">
+                From ₹ {finalPrice.toLocaleString("en-IN")}
+              </span>
+            </>
+          ) : (
+            <span className="text-gray-950 font-medium">
+              ₹ {originalPrice.toLocaleString("en-IN")}
+            </span>
+          )}
         </div>
       </div>
     </div>
   );
 });
 
-// Every threshold implicitly includes everything above it (4★ & above already covers
-// 5★), so checking several boxes is redundant except for the LOOSEST one checked —
-// e.g. checking both "3★ & above" and "1★ & above" only ever needs minRating=1, since
-// that already covers everything the 3★ box would. Multi-checkbox "OR of nested
-// ranges" collapses to a single min() — see applyAllFilters below.
-const RATING_THRESHOLDS = [4, 3, 2, 1];
-
-const RatingsFilterSection = ({
-  selected,
-  onToggle,
-}: {
-  selected: Set<number>;
-  onToggle: (threshold: number) => void;
-}) => (
-  <div className="pt-5">
-    <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3">
-      Customer Ratings
-    </h4>
-    <div className="space-y-2.5">
-      {RATING_THRESHOLDS.map((t) => (
-        <label key={t} className="flex items-center gap-2.5 cursor-pointer group">
-          <input
-            type="checkbox"
-            checked={selected.has(t)}
-            onChange={() => onToggle(t)}
-            className="w-4 h-4 rounded text-[var(--theme-primary)] border-gray-300 focus:ring-[var(--theme-primary)]"
-          />
-          <span className="flex items-center gap-1 text-sm text-gray-600 group-hover:text-gray-900 transition-colors">
-            {t}
-            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-            &amp; above
-          </span>
-        </label>
-      ))}
-    </div>
-  </div>
-);
-
-// FILTER CONTROL COMPONENT
-//
-// The in-page subcategory tree that used to live here was removed — the site-wide
-// CategoryMegaMenu (see Navbar.tsx) now owns category browsing everywhere. What's left
-// — Price, Customer Ratings (both built-in, every product has them), and Attributes
-// like Fabric/Color (category-specific, admin-defined) — is shown to shoppers purely
-// as "Filters"; "Attribute" is backend/admin schema terminology, not something a
-// customer needs to know. Everything here is staged, not instant: nothing refetches
-// the product grid until the single "Apply Filters" button at the bottom is pressed,
-// so dragging the price slider or browsing several attribute options doesn't fire a
-// request per pixel/click.
-const FilterControls = ({
-  resetFilters,
-  onApply,
-  ratingsSection,
-  priceSection,
-  attributesSection,
-}: {
-  resetFilters: () => void;
-  onApply: () => void;
-  ratingsSection?: React.ReactNode;
-  priceSection?: React.ReactNode;
-  attributesSection?: React.ReactNode;
-}) => {
-  return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between pb-4 border-b border-gray-200">
-        <div className="flex items-center gap-2 text-gray-900 font-bold">
-          <SlidersHorizontal className="w-4 h-4 text-gray-700" />
-          <span className="text-sm uppercase tracking-wider">Filters</span>
-        </div>
-        <button
-          onClick={resetFilters}
-          className="inline-flex items-center gap-1 text-xs font-semibold text-rose-600 hover:text-rose-800 transition-colors cursor-pointer"
-        >
-          <RotateCcw className="w-3 h-3" />
-          Clear
-        </button>
-      </div>
-
-      {ratingsSection}
-      {priceSection}
-      {attributesSection}
-
-      <div className="pt-6">
-        <button
-          type="button"
-          onClick={onApply}
-          className="w-full py-3.5 bg-[var(--theme-primary)] text-[var(--theme-primary-ink)] text-xs font-bold uppercase tracking-widest rounded-2xl hover:bg-[var(--theme-primary-hover)] transition-all shadow-md active:scale-98 cursor-pointer"
-        >
-          Apply Filters
-        </button>
-      </div>
-    </div>
-  );
-};
+const SORT_OPTIONS = [
+  { label: "Date, new to old", value: "newest" },
+  { label: "Date, old to new", value: "oldest" },
+  { label: "Price, low to high", value: "price-asc" },
+  { label: "Price, high to low", value: "price-desc" },
+  { label: "Featured", value: "featured" },
+  { label: "Best Selling", value: "popular" },
+];
 
 // --- MAIN PAGE COMPONENT ---
 const CategoryProductsPage = () => {
@@ -288,32 +228,14 @@ const CategoryProductsPage = () => {
   const [loading, setLoading] = useState(true);
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // Page title is the top-level ancestor of whatever category `slug` resolves to
-  // (itself when the slug already is a root category) — see the effect below.
   const [categoryName, setCategoryName] = useState("");
-  const [sortType, setSortType] = useState("featured");
+  const [sortType, setSortType] = useState("newest");
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
-  const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
 
-  // Dynamic attribute filters (AttributeFilterPanel)
+  // Dynamic attribute filters
   const [activeAttrValueIds, setActiveAttrValueIds] = useState<string[]>([]);
   const attrIdsKey = activeAttrValueIds.slice().sort().join(",");
-  const [dynFilterResetKey, setDynFilterResetKey] = useState(0);
-
-  const handleDynFiltersChange = useCallback((f: DynFilters) => {
-    setActiveAttrValueIds((prev) => {
-      const next = f.attributeValueIds.slice().sort();
-      const cur = prev.slice().sort();
-      if (next.join(",") === cur.join(",")) return prev;
-      return next;
-    });
-    // AttributeFilterPanel's sidebar layout only fires this on an explicit "Apply
-    // Filter" press (see its applyNow) — on mobile that's the moment to dismiss the
-    // drawer and reveal the (now filtering) product grid. A no-op on desktop, where
-    // this state is never true.
-    setIsMobileFilterOpen(false);
-  }, []);
 
   const [activeFilters, setActiveFilters] = useState<SelectedFilters>({
     size: [],
@@ -322,71 +244,44 @@ const CategoryProductsPage = () => {
     inStock: false,
   });
 
-  // Built-in Price + Customer Rating filters — every product has these, unlike
-  // Fabric/Color which are category-specific admin-defined attributes. Staged the
-  // same way as AttributeFilterPanel's sidebar mode: "pending" tracks in-progress
-  // slider drags/checkbox clicks, "applied" is what's actually sent to the backend,
-  // and the two only sync when the shared "Apply Filters" button fires (see
-  // applyAllFilters below).
+  // Price Bounds & Range
   const [priceBounds, setPriceBounds] = useState<{ min: number; max: number } | null>(null);
   const [pendingPriceRange, setPendingPriceRange] = useState<[number, number] | null>(null);
   const [appliedPriceRange, setAppliedPriceRange] = useState<[number, number] | null>(null);
-  const [pendingRatingThresholds, setPendingRatingThresholds] = useState<Set<number>>(new Set());
-  const [appliedMinRating, setAppliedMinRating] = useState<number | null>(null);
 
-  // Desktop and mobile drawer each mount their OWN AttributeFilterPanel instance with
-  // independent internal selection state, so each needs its own ref for the shared
-  // Apply button to commit the co-located instance.
-  const desktopAttrPanelRef = useRef<AttributeFilterPanelHandle>(null);
-  const mobileAttrPanelRef = useRef<AttributeFilterPanelHandle>(null);
+  // Category attributes & filter loading state
+  const [categoryAttributes, setCategoryAttributes] = useState<FilterAttribute[]>([]);
+  const [filtersLoading, setFiltersLoading] = useState(true);
 
-  // Fetch the price bounds for this category's subtree (backend already computes this
-  // in getProductFilters — see product-user.controller.ts — it was just unused here
-  // until now) and seed the pending range to the full bounds on first load / category
-  // switch.
+  // Fetch the price bounds and filterable attributes
   useEffect(() => {
     if (!slug) return;
+    setFiltersLoading(true);
     api
       .get(`/user/shop/categories/${slug}/filters`)
       .then((res) => {
-        const range = res.data.priceRange;
+        const range = res.data?.priceRange;
         if (range && typeof range.min === "number" && typeof range.max === "number") {
-          setPriceBounds({ min: Math.floor(range.min), max: Math.ceil(range.max) });
+          let min = Math.floor(range.min);
+          const max = Math.ceil(range.max);
+          if (min >= max) min = 0;
+          setPriceBounds({ min, max });
+          setPendingPriceRange([min, max]);
         } else {
           setPriceBounds(null);
+          setPendingPriceRange(null);
         }
+        setCategoryAttributes(res.data?.attributes ?? []);
       })
-      .catch(() => setPriceBounds(null));
+      .catch(() => {
+        setPriceBounds(null);
+        setPendingPriceRange(null);
+        setCategoryAttributes([]);
+      })
+      .finally(() => {
+        setFiltersLoading(false);
+      });
   }, [slug]);
-
-  useEffect(() => {
-    if (!priceBounds) return;
-    setPendingPriceRange([priceBounds.min, priceBounds.max]);
-  }, [priceBounds]);
-
-  const toggleRatingThreshold = (threshold: number) => {
-    setPendingRatingThresholds((prev) => {
-      const next = new Set(prev);
-      next.has(threshold) ? next.delete(threshold) : next.add(threshold);
-      return next;
-    });
-  };
-
-  // Desktop and mobile drawer each mount their OWN AttributeFilterPanel instance
-  // (see desktopAttrPanelRef/mobileAttrPanelRef above) — both stay mounted at all
-  // times (the drawer/aside are only CSS-hidden, not unmounted), so calling
-  // applyNow() on BOTH refs unconditionally would let whichever one the user *didn't*
-  // touch (still sitting at its empty default selection) clobber the real one right
-  // after it applies. Only the ref the caller identifies as "the one the user actually
-  // used" gets applied.
-  const applyAllFilters = (panelRef: React.RefObject<AttributeFilterPanelHandle | null>) => {
-    setAppliedPriceRange(pendingPriceRange);
-    setAppliedMinRating(
-      pendingRatingThresholds.size > 0 ? Math.min(...pendingRatingThresholds) : null
-    );
-    panelRef.current?.applyNow();
-    setIsMobileFilterOpen(false);
-  };
 
   const fetchProductsByCategory = useCallback(
     async (pageNum = 1, reset = false) => {
@@ -400,12 +295,9 @@ const CategoryProductsPage = () => {
         const params: Record<string, string | number> = {
           sort: sortType,
           page: pageNum,
-          limit: 12,
+          limit: 16,
         };
 
-        if (activeFilters.size.length > 0) {
-          params.sizes = activeFilters.size.join(",");
-        }
         if (activeFilters.inStock) {
           params.inStock = "true";
         }
@@ -416,14 +308,9 @@ const CategoryProductsPage = () => {
           params.attributeValueIds = activeAttrValueIds.join(",");
         }
         if (appliedPriceRange && priceBounds) {
-          // Only send bounds the user actually narrowed — an untouched slider at its
-          // full extent shouldn't add a redundant min/maxPrice query param.
           const [lo, hi] = appliedPriceRange;
           if (lo > priceBounds.min) params.minPrice = lo;
           if (hi < priceBounds.max) params.maxPrice = hi;
-        }
-        if (appliedMinRating !== null) {
-          params.minRating = appliedMinRating;
         }
 
         const res = await api.get(`/user/shop/categories/${slug}`, { params });
@@ -435,12 +322,7 @@ const CategoryProductsPage = () => {
           setProducts((prev) => [...prev, ...newProducts]);
         }
 
-        // Page title comes from the resolved root category (see the effect below),
-        // not from the products themselves — a subcategory's products still carry
-        // their own (sub)category name, which would otherwise override the top-level
-        // title we deliberately show instead.
-
-        setHasMore(newProducts.length === 12);
+        setHasMore(newProducts.length === 16);
         setPage(pageNum);
       } catch (err) {
         setError("Unable to load products at this time");
@@ -449,10 +331,9 @@ const CategoryProductsPage = () => {
         setInitialLoading(false);
       }
     },
-    [slug, sortType, activeFilters, activeAttrValueIds, appliedPriceRange, appliedMinRating, priceBounds]
+    [slug, sortType, activeFilters, activeAttrValueIds, appliedPriceRange, priceBounds]
   );
 
-  // Client-side real-time product filtering based on search query
   const displayedProducts = useMemo(() => {
     if (!searchQuery.trim()) return products;
     const q = searchQuery.toLowerCase().trim();
@@ -477,7 +358,7 @@ const CategoryProductsPage = () => {
 
   useEffect(() => {
     fetchProductsByCategory(1, true);
-  }, [slug, sortType, activeFilters, attrIdsKey, priceRangeKey, appliedMinRating]);
+  }, [slug, sortType, activeFilters, attrIdsKey, priceRangeKey]);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "instant" });
@@ -506,9 +387,6 @@ const CategoryProductsPage = () => {
 
           const matchedId = String(matched.id ?? matched._id);
 
-          // Walk up parentId pointers to the top-level ancestor — that's the name the
-          // page titles itself with, regardless of how deep the actual slug's
-          // subcategory sits.
           let rootNode = normalized.find((c) => c.id === matchedId) ?? null;
           while (rootNode?.parentId) {
             const parent = normalized.find((c) => c.id === rootNode!.parentId);
@@ -527,41 +405,34 @@ const CategoryProductsPage = () => {
   useInfiniteScroll(loadMore);
 
   const resetFilters = () => {
-    const empty: SelectedFilters = {
+    setActiveFilters({
       size: [],
       color: [],
       discount: false,
       inStock: false,
-    };
-    setActiveFilters(empty);
+    });
     setActiveAttrValueIds([]);
     setSearchQuery("");
-    setDynFilterResetKey((k) => k + 1);
-    setPendingRatingThresholds(new Set());
-    setAppliedMinRating(null);
     setPendingPriceRange(priceBounds ? [priceBounds.min, priceBounds.max] : null);
     setAppliedPriceRange(null);
-    setIsMobileFilterOpen(false);
   };
 
   const hasActiveFilters =
-    activeFilters.size.length > 0 ||
-    activeFilters.color.length > 0 ||
-    activeFilters.discount ||
     activeFilters.inStock ||
+    activeFilters.discount ||
     activeAttrValueIds.length > 0 ||
-    appliedMinRating !== null ||
     (appliedPriceRange !== null &&
       priceBounds !== null &&
       (appliedPriceRange[0] > priceBounds.min || appliedPriceRange[1] < priceBounds.max));
+
   const isCategoryEmpty = products.length === 0 && !hasActiveFilters && !loading;
 
-  if (initialLoading) {
+  if (initialLoading || filtersLoading) {
     return (
       <div className="min-h-screen bg-white">
-        <div className="h-24 bg-gradient-to-r from-gray-50 to-white" />
-        <div className="max-w-7xl mx-auto px-4 py-24">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="w-full px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-24 mt-[var(--app-header-h,5rem)]">
+          <div className="h-8 w-48 bg-stone-100 rounded-md mb-8 animate-pulse" />
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
             {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
               <SkeletonCard key={i} />
             ))}
@@ -575,13 +446,13 @@ const CategoryProductsPage = () => {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center p-4">
         <div className="text-center max-w-sm">
-          <h3 className="text-2xl font-semibold text-gray-900 mb-2">
+          <h3 className="text-2xl font-semibold text-gray-900 mb-2 font-sans">
             Something went wrong
           </h3>
-          <p className="text-gray-600 mb-6">{error}</p>
+          <p className="text-gray-600 mb-6 text-sm">{error}</p>
           <button
             onClick={() => fetchProductsByCategory(1, true)}
-            className="px-6 py-3 bg-[var(--theme-primary)] text-[var(--theme-primary-ink)] rounded-lg hover:bg-[var(--theme-primary-hover)] transition-colors cursor-pointer"
+            className="px-6 py-2.5 bg-black text-white rounded-full hover:bg-zinc-800 transition-colors cursor-pointer text-xs uppercase tracking-wider font-medium"
           >
             Try Again
           </button>
@@ -594,7 +465,11 @@ const CategoryProductsPage = () => {
     <div className="min-h-screen bg-white font-sans text-gray-900 flex flex-col">
       <PageSeo
         title={categoryName || "Shop"}
-        description={categoryName ? `Shop ${categoryName} — browse the full collection.` : undefined}
+        description={
+          categoryName
+            ? `Shop ${categoryName} — browse the full collection.`
+            : undefined
+        }
         path={`/categories/${slug}`}
       />
       <BreadcrumbJsonLd
@@ -603,288 +478,384 @@ const CategoryProductsPage = () => {
           { name: categoryName || "Category", path: `/categories/${slug}` },
         ]}
       />
-      <main className={`max-w-7xl mx-auto px-4 pt-4 pb-16 mt-(--app-header-h) w-full flex-1 flex flex-col ${isCategoryEmpty ? "justify-center min-h-[calc(100vh-10rem)]" : ""}`}>
+
+      <main className="w-full px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 pt-4 pb-16 mt-[var(--app-header-h,5rem)] flex-1 flex flex-col">
+        {/* Back Link */}
         <button
           onClick={() => navigate(-1)}
-          className="group flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-gray-900 transition-colors mb-4 mt-5 shrink-0"
+          className="group inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-widest text-gray-400 hover:text-gray-900 transition-colors mb-3 shrink-0 self-start cursor-pointer"
         >
           <ArrowLeft className="w-3.5 h-3.5 transform transition-transform group-hover:-translate-x-1" />
           <span>Go Back</span>
         </button>
 
-        {/* --- CENTERED HEADING WITH UNDERLINE --- */}
+        {/* --- TITLE MATCHING REFERRAL IMAGE (e.g. "NEW ARRIVALS") --- */}
         {!isCategoryEmpty && (
-          <div className="text-center mb-6">
-            <motion.h2
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="text-3xl font-bold tracking-tight sm:text-4xl font-sans text-black capitalize"
-            >
+          <div className="mb-4 pt-1">
+            <h1 className="text-2xl sm:text-3xl lg:text-3xl font-medium tracking-wide uppercase text-gray-950 font-sans">
               {categoryName && isNaN(Number(categoryName.trim()))
                 ? categoryName
-                : "Collection"}
-            </motion.h2>
-            <motion.div
-              initial={{ width: 0 }}
-              animate={{ width: "60px" }}
-              transition={{ duration: 0.8 }}
-              className="h-1 bg-[var(--theme-primary)] mx-auto mt-2 rounded-full"
-            />
+                : "New Arrivals"}
+            </h1>
           </div>
         )}
 
-        {/* --- COMPACT CONTROLS BAR (SEARCH & SORT) --- */}
+        {/* --- HORIZONTAL FILTER & SORT BAR MATCHING REFERRAL IMAGE --- */}
         {!isCategoryEmpty && (
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mb-6">
-            {/* Search Box with Embedded Clear (X) Button */}
-            <div className="relative w-full sm:w-64 md:w-72">
-              
-            </div>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 py-3 border-t border-b border-gray-200/90 mb-6 font-sans">
+            {/* Left: Filter Label & Popover Dropdowns */}
+            <div className="flex items-center gap-x-3.5 sm:gap-x-6 gap-y-2.5 flex-wrap text-xs text-gray-800">
+              <span className="text-gray-500 font-normal text-xs sm:text-[13px] tracking-wide">
+                Filter:
+              </span>
 
-            {/* Right Controls: Sort & Mobile Filter */}
-            <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
-              <Popover className="relative w-full sm:w-auto">
-                <Popover.Button className="w-full sm:w-auto inline-flex items-center justify-between sm:justify-start gap-1 px-3 py-1.5 bg-white border border-gray-200 hover:border-gray-300 rounded-full text-xs font-medium text-gray-700 focus:outline-none cursor-pointer transition-colors">
-                  <span className="truncate">
-                    {sortType === "featured" && "Sort By: Featured"}
-                    {sortType === "newest" && "Sort By: Newest"}
-                    {sortType === "price-asc" && "Price: Low to High"}
-                    {sortType === "price-desc" && "Price: High to Low"}
-                    {sortType === "popular" && "Most Popular"}
-                  </span>
-                  <ChevronDown className="h-3 w-3 text-gray-400 shrink-0" />
-                </Popover.Button>
-                <Popover.Panel className="absolute right-0 mt-2 w-48 bg-white border border-gray-100 rounded-2xl shadow-xl p-1.5 z-30 ring-1 ring-black/5">
-                  {({ close }) => (
-                    <div className="flex flex-col gap-0.5">
-                      {[
-                        { label: "Featured", value: "featured" },
-                        { label: "Newest Arrivals", value: "newest" },
-                        { label: "Price: Low to High", value: "price-asc" },
-                        { label: "Price: High to Low", value: "price-desc" },
-                        { label: "Most Popular", value: "popular" },
-                      ].map((option) => (
-                        <button
-                          key={option.value}
-                          type="button"
-                          className={classNames(
-                            sortType === option.value
-                              ? "bg-slate-100 text-gray-900 font-bold"
-                              : "text-gray-700 hover:bg-gray-50",
-                            "block w-full px-3 py-1.5 text-left text-xs rounded-xl transition-colors cursor-pointer"
-                          )}
-                          onClick={() => {
-                            setSortType(option.value);
-                            close();
-                          }}
-                        >
-                          {option.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </Popover.Panel>
+              {/* 1. Availability */}
+              <Popover className="relative">
+                {({ open }) => (
+                  <>
+                    <Popover.Button className="inline-flex items-center gap-1 text-xs sm:text-[13px] text-gray-800 hover:text-black font-normal focus:outline-none cursor-pointer transition-colors py-1.5 px-0.5 sm:px-0 sm:py-1">
+                      <span>Availability</span>
+                      {activeFilters.inStock && (
+                        <span className="h-1.5 w-1.5 rounded-full bg-black ml-0.5" />
+                      )}
+                      <ChevronDown
+                        className={`h-3 w-3 text-gray-500 transition-transform duration-200 ${
+                          open ? "rotate-180" : ""
+                        }`}
+                      />
+                    </Popover.Button>
+                    <AutoAlignPopoverPanel className="left-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-200 p-3 ring-1 ring-black/5 animate-in fade-in zoom-in-95 duration-150">
+                      <div className="space-y-2">
+                        <label className="flex items-center gap-2.5 text-xs text-gray-800 cursor-pointer select-none py-1 px-1 rounded-md hover:bg-gray-50">
+                          <input
+                            type="radio"
+                            name="availability"
+                            checked={!activeFilters.inStock}
+                            onChange={() =>
+                              setActiveFilters((prev) => ({ ...prev, inStock: false }))
+                            }
+                            className="w-3.5 h-3.5 text-black accent-black cursor-pointer"
+                          />
+                          <span>All Items</span>
+                        </label>
+                        <label className="flex items-center gap-2.5 text-xs text-gray-800 cursor-pointer select-none py-1 px-1 rounded-md hover:bg-gray-50">
+                          <input
+                            type="radio"
+                            name="availability"
+                            checked={activeFilters.inStock}
+                            onChange={() =>
+                              setActiveFilters((prev) => ({ ...prev, inStock: true }))
+                            }
+                            className="w-3.5 h-3.5 text-black accent-black cursor-pointer"
+                          />
+                          <span>In Stock</span>
+                        </label>
+                      </div>
+                    </AutoAlignPopoverPanel>
+                  </>
+                )}
               </Popover>
 
-              {/* Mobile Filters Button */}
-              <button
-                onClick={() => setIsMobileFilterOpen(true)}
-                className="lg:hidden w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-full text-xs font-medium text-gray-700 hover:bg-gray-50 cursor-pointer"
-              >
-                <Filter className="h-3.5 w-3.5" /> Filters
-              </button>
-            </div>
-          </div>
-        )}
-
-        <div className={isCategoryEmpty ? "my-auto flex-1 flex flex-col justify-center" : ""}>
-          {isCategoryEmpty ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center my-auto">
-              <h3 className="text-xl font-bold text-gray-900 mb-1">
-                No products available
-              </h3>
-              <p className="text-xs text-gray-500 max-w-xs mb-6 font-medium">
-                We are currently curating new styles for this collection. Please check back soon!
-              </p>
-              <button
-                onClick={() => navigate(-1)}
-                className="inline-flex items-center justify-center px-6 py-2.5 bg-[var(--theme-primary)] text-[var(--theme-primary-ink)] text-xs font-bold uppercase tracking-wider rounded-full hover:bg-[var(--theme-primary-hover)] transition-all active:scale-95 shadow-sm cursor-pointer"
-              >
-                Continue Shopping
-              </button>
-            </div>
-          ) : (
-            <div>
-              {/* Results Counter */}
-              <div className="mb-4 text-xs text-gray-500 text-right">
-                Showing <strong className="text-gray-900">{displayedProducts.length}</strong> items
-              </div>
-
-              {/* MAIN CONTENT GRID */}
-              <div className="flex flex-col lg:flex-row gap-8 items-start">
-                {/* DESKTOP SIDEBAR */}
-                <aside className="lg:w-64 flex-shrink-0 hidden lg:block">
-                  <div className="sticky top-24 p-5 bg-gray-50 rounded-2xl border border-gray-100">
-                    <FilterControls
-                      resetFilters={resetFilters}
-                      onApply={() => applyAllFilters(desktopAttrPanelRef)}
-                      ratingsSection={
-                        <RatingsFilterSection
-                          selected={pendingRatingThresholds}
-                          onToggle={toggleRatingThreshold}
+              {/* 2. Price */}
+              {priceBounds && (
+                <Popover className="relative">
+                  {({ open }) => (
+                    <>
+                      <Popover.Button className="inline-flex items-center gap-1 text-xs sm:text-[13px] text-gray-800 hover:text-black font-normal focus:outline-none cursor-pointer transition-colors py-1.5 px-0.5 sm:px-0 sm:py-1">
+                        <span>Price</span>
+                        {appliedPriceRange && (
+                          <span className="h-1.5 w-1.5 rounded-full bg-black ml-0.5" />
+                        )}
+                        <ChevronDown
+                          className={`h-3 w-3 text-gray-500 transition-transform duration-200 ${
+                            open ? "rotate-180" : ""
+                          }`}
                         />
-                      }
-                      priceSection={
-                        priceBounds && pendingPriceRange ? (
-                          <div className="pt-5">
-                            <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3">
-                              Price
-                            </h4>
+                      </Popover.Button>
+                      <AutoAlignPopoverPanel className="-left-14 sm:left-0 mt-2 w-64 max-w-[calc(100vw-32px)] bg-white rounded-xl shadow-xl border border-gray-200 p-4 ring-1 ring-black/5 animate-in fade-in zoom-in-95 duration-150">
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between text-xs font-medium text-gray-900">
+                            <span>Price Range</span>
+                            <span className="text-gray-500 font-normal">
+                              ₹{pendingPriceRange?.[0] ?? priceBounds.min} – ₹
+                              {pendingPriceRange?.[1] ?? priceBounds.max}
+                            </span>
+                          </div>
+                          {pendingPriceRange && (
                             <PriceRangeSlider
                               bounds={priceBounds}
                               value={pendingPriceRange}
                               onChange={setPendingPriceRange}
                             />
+                          )}
+                          <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPendingPriceRange([priceBounds.min, priceBounds.max]);
+                                setAppliedPriceRange(null);
+                              }}
+                              className="text-[11px] text-gray-500 hover:text-black underline cursor-pointer"
+                            >
+                              Reset
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setAppliedPriceRange(pendingPriceRange)}
+                              className="px-3.5 py-1 bg-black text-white text-[11px] font-medium rounded-md hover:bg-zinc-800 cursor-pointer transition-all"
+                            >
+                              Apply
+                            </button>
                           </div>
-                        ) : undefined
-                      }
-                      attributesSection={
-                        slug ? (
-                          <AttributeFilterPanel
-                            ref={desktopAttrPanelRef}
-                            categoryId={slug}
-                            onFiltersChange={handleDynFiltersChange}
-                            resetKey={dynFilterResetKey}
+                        </div>
+                      </AutoAlignPopoverPanel>
+                    </>
+                  )}
+                </Popover>
+              )}
+
+              {/* 3. Dynamic Category Attributes (Shop By Type, Color, Stone, etc.) */}
+              {categoryAttributes.map((attr) => (
+                <Popover key={attr.name} className="relative">
+                  {({ open }) => {
+                    const selectedCount = attr.values.filter((v) =>
+                      activeAttrValueIds.includes(String(v.id))
+                    ).length;
+                    return (
+                      <>
+                        <Popover.Button className="inline-flex items-center gap-1 text-xs sm:text-[13px] text-gray-800 hover:text-black font-normal focus:outline-none cursor-pointer transition-colors py-1.5 px-0.5 sm:px-0 sm:py-1">
+                          <span>{attr.name}</span>
+                          {selectedCount > 0 && (
+                            <span className="h-4 w-4 rounded-full bg-black text-white text-[9px] flex items-center justify-center font-bold">
+                              {selectedCount}
+                            </span>
+                          )}
+                          <ChevronDown
+                            className={`h-3 w-3 text-gray-500 transition-transform duration-200 ${
+                              open ? "rotate-180" : ""
+                            }`}
                           />
-                        ) : undefined
-                      }
-                    />
-                  </div>
-                </aside>
+                        </Popover.Button>
+                        <AutoAlignPopoverPanel className="right-0 sm:right-auto sm:left-0 mt-2 w-52 sm:w-56 max-h-72 overflow-y-auto bg-white rounded-xl shadow-xl border border-gray-200 p-3 ring-1 ring-black/5 animate-in fade-in zoom-in-95 duration-150">
+                          <div className="space-y-2">
+                            {attr.values.map((val) => {
+                              const isChecked = activeAttrValueIds.includes(String(val.id));
+                              return (
+                                <label
+                                  key={val.id}
+                                  className="flex items-center gap-2.5 text-xs text-gray-800 cursor-pointer select-none py-1 px-1 rounded-md hover:bg-gray-50"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={() => {
+                                      setActiveAttrValueIds((prev) =>
+                                        isChecked
+                                          ? prev.filter((id) => id !== String(val.id))
+                                          : [...prev, String(val.id)]
+                                      );
+                                    }}
+                                    className="w-3.5 h-3.5 text-black accent-black rounded-[2px] cursor-pointer"
+                                  />
+                                  <span>{val.value}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </AutoAlignPopoverPanel>
+                      </>
+                    );
+                  }}
+                </Popover>
+              ))}
+            </div>
 
-                {/* PRODUCTS GRID */}
-                <div className="flex-1 w-full">
-                  {displayedProducts.length === 0 && !loading ? (
-                    <div className="text-center py-16 bg-gray-50 rounded-3xl border border-dashed border-gray-200">
-                      <ShoppingBag className="w-12 h-12 mx-auto text-gray-300 mb-4" />
-                      <h3 className="text-lg font-bold text-gray-900 mb-2">
-                        No products found
-                      </h3>
-                      <p className="text-gray-500 mb-6 max-w-sm mx-auto text-xs">
-                        We couldn't find any products matching your search or filters.
-                      </p>
-                      <button
-                        onClick={resetFilters}
-                        className="px-6 py-2 bg-white border border-gray-300 text-gray-900 text-xs font-bold rounded-full hover:bg-gray-50 transition-colors cursor-pointer"
-                      >
-                        Reset Filters
-                      </button>
-                    </div>
-                  ) : (
-                    <div
-                      className={classNames(
-                        "transition-opacity duration-200",
-                        loading ? "opacity-50 pointer-events-none" : "opacity-100"
-                      )}
-                    >
-                      <div className="grid grid-cols-1 gap-x-6 gap-y-8 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
-                        {displayedProducts.map((product) => (
-                          <ModernProductCard key={product.id} product={product} />
-                        ))}
-                      </div>
-
-                      {hasMore && !searchQuery && (
-                        <div className="text-center mt-12">
-                          <button
-                            onClick={loadMore}
-                            disabled={loading}
-                            className="px-8 py-3 border border-gray-200 text-gray-600 text-xs font-bold uppercase tracking-wider rounded-full hover:bg-[var(--theme-primary)] hover:text-[var(--theme-primary-ink)] hover:border-[var(--theme-primary)] transition-all disabled:opacity-50 cursor-pointer"
-                          >
-                            {loading
-                              ? "Loading more styles..."
-                              : "Load More Products"}
-                          </button>
+            {/* Right: Sort by & Product count */}
+            <div className="flex items-center gap-4 sm:gap-6 shrink-0 justify-between sm:justify-end">
+              <Popover className="relative">
+                {({ open }) => (
+                  <>
+                    <Popover.Button className="inline-flex items-center gap-1.5 text-xs sm:text-[13px] text-gray-800 hover:text-black font-normal focus:outline-none cursor-pointer transition-colors py-1.5 px-0.5 sm:px-0 sm:py-1">
+                      <span className="text-gray-500 font-normal">Sort by:</span>
+                      <span className="font-medium text-gray-900">
+                        {SORT_OPTIONS.find((o) => o.value === sortType)?.label ||
+                          "Date, new to old"}
+                      </span>
+                      <ChevronDown
+                        className={`h-3 w-3 text-gray-500 transition-transform duration-200 ${
+                          open ? "rotate-180" : ""
+                        }`}
+                      />
+                    </Popover.Button>
+                    <AutoAlignPopoverPanel className="left-0 sm:left-auto sm:right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-200 py-1.5 ring-1 ring-black/5 animate-in fade-in zoom-in-95 duration-150">
+                      {({ close }) => (
+                        <div className="flex flex-col">
+                          {SORT_OPTIONS.map((option) => (
+                            <button
+                              key={option.value}
+                              type="button"
+                              className={classNames(
+                                sortType === option.value
+                                  ? "bg-gray-100 text-black font-bold"
+                                  : "text-gray-700 hover:bg-gray-50",
+                                "block w-full px-4 py-2 text-left text-xs transition-colors cursor-pointer"
+                              )}
+                              onClick={() => {
+                                setSortType(option.value);
+                                close();
+                              }}
+                            >
+                              {option.label}
+                            </button>
+                          ))}
                         </div>
                       )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </main>
+                    </AutoAlignPopoverPanel>
+                  </>
+                )}
+              </Popover>
 
-      {/* MOBILE FILTER DRAWER */}
-      <AnimatePresence>
-        {isMobileFilterOpen && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 0.5 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsMobileFilterOpen(false)}
-              className="fixed inset-0 bg-black z-40 lg:hidden"
-            />
-            <motion.div
-              initial={{ x: "100%" }}
-              animate={{ x: 0 }}
-              exit={{ x: "100%" }}
-              transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="fixed inset-y-0 right-0 z-50 w-full max-w-xs bg-white p-6 shadow-2xl flex flex-col lg:hidden"
-            >
-              <div className="flex items-center justify-between pb-4 border-b border-gray-100 mb-4">
-                <h3 className="text-base font-bold text-gray-900">Filters</h3>
+              <span className="text-xs sm:text-[13px] text-gray-500 font-normal">
+                {displayedProducts.length}{" "}
+                {displayedProducts.length === 1 ? "product" : "products"}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* --- ACTIVE FILTER CHIPS --- */}
+        {hasActiveFilters && (
+          <div className="mb-6 flex flex-wrap items-center gap-2 animate-in fade-in duration-150">
+            {activeFilters.inStock && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-stone-100 border border-stone-200 px-3 py-1 text-xs text-gray-800">
+                <span>In Stock</span>
                 <button
-                  onClick={() => setIsMobileFilterOpen(false)}
-                  className="p-1 rounded-full hover:bg-gray-100 cursor-pointer"
+                  type="button"
+                  onClick={() => setActiveFilters((prev) => ({ ...prev, inStock: false }))}
+                  className="hover:text-black cursor-pointer"
                 >
-                  <X className="w-5 h-5 text-gray-500" />
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            )}
+
+            {appliedPriceRange && priceBounds && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-stone-100 border border-stone-200 px-3 py-1 text-xs text-gray-800">
+                <span>
+                  ₹{appliedPriceRange[0]} – ₹{appliedPriceRange[1]}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setAppliedPriceRange(null)}
+                  className="hover:text-black cursor-pointer"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            )}
+
+            {activeAttrValueIds.length > 0 &&
+              categoryAttributes.flatMap((a) =>
+                a.values
+                  .filter((v) => activeAttrValueIds.includes(String(v.id)))
+                  .map((v) => (
+                    <span
+                      key={v.id}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-stone-100 border border-stone-200 px-3 py-1 text-xs text-gray-800"
+                    >
+                      <span>
+                        {a.name}: {v.value}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setActiveAttrValueIds((prev) =>
+                            prev.filter((id) => id !== String(v.id))
+                          )
+                        }
+                        className="hover:text-black cursor-pointer"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  ))
+              )}
+
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-black underline cursor-pointer ml-2"
+            >
+              <RotateCcw className="h-3 w-3" />
+              <span>Clear All</span>
+            </button>
+          </div>
+        )}
+
+        {/* --- PRODUCTS 4-COLUMN GRID MATCHING REFERRAL IMAGE --- */}
+        {isCategoryEmpty ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center my-auto">
+            <ShoppingBag className="w-10 h-10 text-gray-300 stroke-[1.25] mb-3" />
+            <h3 className="text-lg font-medium text-gray-900 mb-1">No products available</h3>
+            <p className="text-xs text-gray-500 max-w-xs mb-6">
+              We are currently curating new pieces for this collection.
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate(-1)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-gray-700 hover:text-gray-950 bg-white hover:bg-gray-50 border border-gray-200 hover:border-gray-300 rounded-lg transition-all cursor-pointer shadow-2xs"
+            >
+              <ArrowLeft className="w-3.5 h-3.5 text-gray-400" />
+              <span>Continue Shopping</span>
+            </button>
+          </div>
+        ) : (
+          <div className="w-full">
+            {displayedProducts.length === 0 && !loading ? (
+              <div className="text-center py-16 bg-stone-50 rounded-2xl border border-dashed border-gray-200">
+                <ShoppingBag className="w-10 h-10 mx-auto text-gray-300 mb-3" />
+                <h3 className="text-base font-medium text-gray-900 mb-1">No products found</h3>
+                <p className="text-gray-500 mb-4 text-xs">
+                  We couldn't find any products matching your selected filters.
+                </p>
+                <button
+                  onClick={resetFilters}
+                  className="px-5 py-2 bg-black text-white text-xs font-medium rounded-full hover:bg-zinc-800 transition-colors cursor-pointer"
+                >
+                  Reset Filters
                 </button>
               </div>
+            ) : (
+              <div
+                className={classNames(
+                  "transition-opacity duration-200",
+                  loading ? "opacity-50 pointer-events-none" : "opacity-100"
+                )}
+              >
+                <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-8 sm:gap-x-6 sm:gap-y-10 lg:gap-x-8">
+                  {displayedProducts.map((product) => (
+                    <ModernProductCard key={product.id} product={product} />
+                  ))}
+                </div>
 
-              <div className="flex-1 overflow-y-auto">
-                <FilterControls
-                  resetFilters={resetFilters}
-                  onApply={() => applyAllFilters(mobileAttrPanelRef)}
-                  ratingsSection={
-                    <RatingsFilterSection
-                      selected={pendingRatingThresholds}
-                      onToggle={toggleRatingThreshold}
-                    />
-                  }
-                  priceSection={
-                    priceBounds && pendingPriceRange ? (
-                      <div className="pt-5">
-                        <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider mb-3">
-                          Price
-                        </h4>
-                        <PriceRangeSlider
-                          bounds={priceBounds}
-                          value={pendingPriceRange}
-                          onChange={setPendingPriceRange}
-                        />
-                      </div>
-                    ) : undefined
-                  }
-                  attributesSection={
-                    slug ? (
-                      <AttributeFilterPanel
-                        ref={mobileAttrPanelRef}
-                        categoryId={slug}
-                        onFiltersChange={handleDynFiltersChange}
-                        resetKey={dynFilterResetKey}
-                      />
-                    ) : undefined
-                  }
-                />
+                {hasMore && !searchQuery && (
+                  <div className="text-center mt-12">
+                    <button
+                      onClick={loadMore}
+                      disabled={loading}
+                      className="px-8 py-3 border border-gray-300 text-gray-800 text-xs font-medium uppercase tracking-wider rounded-full hover:bg-black hover:text-white hover:border-black transition-all disabled:opacity-50 cursor-pointer"
+                    >
+                      {loading ? "Loading more styles..." : "Load More Products"}
+                    </button>
+                  </div>
+                )}
               </div>
-            </motion.div>
-          </>
+            )}
+          </div>
         )}
-      </AnimatePresence>
+      </main>
 
-      {!isCategoryEmpty && <FooterSection />}
+      <FooterSection />
     </div>
   );
 };

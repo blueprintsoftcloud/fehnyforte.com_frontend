@@ -1,13 +1,15 @@
-import React, { lazy, Suspense } from "react";
+import React, { Suspense } from "react";
+import lazyWithRetry from "./utils/lazyWithRetry";
+import ErrorBoundary from "./components/ErrorBoundary";
 import {
   Routes,
   Route,
   useLocation,
   Outlet,
   Navigate,
+  useNavigate,
 } from "react-router-dom";
-import { useEffect, useRef } from "react";
-import { PulseLoader } from "react-spinners";
+import { useEffect, useLayoutEffect, useRef } from "react";
 
 /* ==================== CONTEXT HOOKS ==================== */
 import { useAuth } from "./context/AuthContext";
@@ -18,6 +20,16 @@ import PageSeo from "./components/seo/PageSeo";
 /* ==================== GLOBAL COMPONENTS ==================== */
 // Kept eager: needed immediately for every customer route, and small.
 import Navbar from "./components/Navbar";
+import FestiveAmbientOverlay from "./components/FestiveAmbientOverlay";
+import Loader from "./components/Loader";
+
+/* ==================== STATIC CONTENT PAGES ==================== */
+// Kept eager: lightweight static editorial pages — eliminates lazy chunk Suspense spinner flash on footer clicks
+import AboutPage from "./pages/static/AboutPage";
+import TermsPage from "./pages/static/TermsPage";
+import PrivacyPage from "./pages/static/PrivacyPage";
+import HelpPage from "./pages/static/HelpPage";
+import ContactPage from "./pages/static/ContactPage";
 
 /* ==================== AUTH ==================== */
 // Kept eager: tiny, and Login is the very first thing an unauthenticated visit needs.
@@ -40,52 +52,53 @@ import { StaffPermissionProvider } from "./context/StaffPermissionContext";
  * chunk, fetched only when its route is actually visited. */
 
 /* ── Dashboards ── */
-const Admindashboard = lazy(() => import("./dashboard/Admindashboard"));
-const SuperAdminDashboard = lazy(() => import("./dashboard/SuperAdminDashboard"));
-const Customerdashboard = lazy(() => import("./dashboard/Customerdashboard"));
-const StaffDashboard = lazy(() => import("./dashboard/StaffDashboard"));
+const Admindashboard = lazyWithRetry(() => import("./dashboard/Admindashboard"));
+const SuperAdminDashboard = lazyWithRetry(() => import("./dashboard/SuperAdminDashboard"));
+const Customerdashboard = lazyWithRetry(() => import("./dashboard/Customerdashboard"));
+const StaffDashboard = lazyWithRetry(() => import("./dashboard/StaffDashboard"));
 
 /* ── Admin ── */
-const UserManagementPage = lazy(() => import("./users/UserManagementPage"));
-const CustomerManagementPage = lazy(() => import("./users/CustomerManagementPage"));
+const UserManagementPage = lazyWithRetry(() => import("./users/UserManagementPage"));
+const CustomerManagementPage = lazyWithRetry(() => import("./users/CustomerManagementPage"));
 
-const Listcategory = lazy(() => import("./categories/Listcategory"));
-const CategoryAttributes = lazy(() => import("./categories/CategoryAttributes"));
-const LegacyCatalogRedirect = lazy(() => import("./catalog/LegacyCatalogRedirect"));
+const Listcategory = lazyWithRetry(() => import("./categories/Listcategory"));
+const CategoryAttributes = lazyWithRetry(() => import("./categories/CategoryAttributes"));
+const LegacyCatalogRedirect = lazyWithRetry(() => import("./catalog/LegacyCatalogRedirect"));
 
-const AdminOrderManagement = lazy(() => import("./dashboard/AdminOrderManagement"));
-const AdminProfile = lazy(() => import("./dashboard/AdminProfile"));
-const CouponManagement = lazy(() => import("./dashboard/CouponManagement"));
-const NotificationManagement = lazy(() => import("./dashboard/NotificationManagement"));
-const ReportsAnalytics = lazy(() => import("./dashboard/ReportsAnalytics"));
-const StaffManagement = lazy(() => import("./dashboard/StaffManagement"));
-const StaffProfile = lazy(() => import("./dashboard/StaffProfile"));
-const StaffDashboardHome = lazy(() => import("./dashboard/StaffDashboardHome"));
-const AuditLog = lazy(() => import("./dashboard/AuditLog"));
-const WarehouseSettings = lazy(() => import("./dashboard/WarehouseSettings"));
-const HomepageManager = lazy(() => import("./dashboard/HomepageManager"));
-const StaticPagesManager = lazy(() => import("./dashboard/StaticPagesManager"));
-const CustomerTransactions = lazy(() => import("./dashboard/CustomerTransactions"));
-const CustomerActivityTracker = lazy(() => import("./dashboard/CustomerActivityTracker"));
-const PaymentTransactionLogs = lazy(() => import("./dashboard/PaymentTransactionLogs"));
-const AdminOrderPage = lazy(() => import("./dashboard/AdminOrderPage"));
-const SuperAdminMonitoring = lazy(() => import("./dashboard/SuperAdminMonitoring"));
+const AdminOrderManagement = lazyWithRetry(() => import("./dashboard/AdminOrderManagement"));
+const AdminProfile = lazyWithRetry(() => import("./dashboard/AdminProfile"));
+const CouponManagement = lazyWithRetry(() => import("./dashboard/CouponManagement"));
+const NotificationManagement = lazyWithRetry(() => import("./dashboard/NotificationManagement"));
+const ReportsAnalytics = lazyWithRetry(() => import("./dashboard/ReportsAnalytics"));
+const StaffManagement = lazyWithRetry(() => import("./dashboard/StaffManagement"));
+const StaffProfile = lazyWithRetry(() => import("./dashboard/StaffProfile"));
+const StaffDashboardHome = lazyWithRetry(() => import("./dashboard/StaffDashboardHome"));
+const AuditLog = lazyWithRetry(() => import("./dashboard/AuditLog"));
+const WarehouseSettings = lazyWithRetry(() => import("./dashboard/WarehouseSettings"));
+const HomepageManager = lazyWithRetry(() => import("./dashboard/HomepageManager"));
+const StaticPagesManager = lazyWithRetry(() => import("./dashboard/StaticPagesManager"));
+const CustomerTransactions = lazyWithRetry(() => import("./dashboard/CustomerTransactions"));
+const CustomerActivityTracker = lazyWithRetry(() => import("./dashboard/CustomerActivityTracker"));
+const PaymentTransactionLogs = lazyWithRetry(() => import("./dashboard/PaymentTransactionLogs"));
+const AdminOrderPage = lazyWithRetry(() => import("./dashboard/AdminOrderPage"));
+const SuperAdminMonitoring = lazyWithRetry(() => import("./dashboard/SuperAdminMonitoring"));
+const AdminProductStockManagement = lazyWithRetry(() => import("./dashboard/AdminProductStockManagement"));
 
 /* ── Customer ── */
-const ProductsPage = lazy(() => import("./components/AllProducts"));
-const CategoryProductPage = lazy(() => import("./cart/CategoryProductPage"));
-const ProductDetailPage = lazy(() => import("./cart/ProductDetailPage"));
+const ProductsPage = lazyWithRetry(() => import("./components/AllProducts"));
+const AllCategoriesPage = lazyWithRetry(() => import("./pages/AllCategoriesPage"));
+const CategoryProductPage = lazyWithRetry(() => import("./cart/CategoryProductPage"));
+const ProductDetailPage = lazyWithRetry(() => import("./cart/ProductDetailPage"));
 
-const Cartpage = lazy(() => import("./cart/Cartpage"));
-const CheckoutPage = lazy(() => import("./cart/CheckoutPage"));
+const CheckoutPage = lazyWithRetry(() => import("./cart/CheckoutPage"));
 
-const MyOrdersPage = lazy(() => import("./orders/MyOrdersPage"));
-const WhishlistPage = lazy(() => import("./pages/WishlistPage"));
-const ProfilePage = lazy(() => import("./pages/ProfilePage"));
-const OrderSuccess = lazy(() => import("./pages/OrderSuccess"));
-const InvoicePage = lazy(() => import("./pages/InvoicePage"));
-const TransactionHistory = lazy(() => import("./pages/TransactionHistory"));
-const DiscountPage = lazy(() => import("./components/DiscountPage"));
+const MyOrdersPage = lazyWithRetry(() => import("./orders/MyOrdersPage"));
+const WhishlistPage = lazyWithRetry(() => import("./pages/WishlistPage"));
+const ProfilePage = lazyWithRetry(() => import("./pages/ProfilePage"));
+const OrderSuccess = lazyWithRetry(() => import("./pages/OrderSuccess"));
+const InvoicePage = lazyWithRetry(() => import("./pages/InvoicePage"));
+const TransactionHistory = lazyWithRetry(() => import("./pages/TransactionHistory"));
+const DiscountPage = lazyWithRetry(() => import("./components/DiscountPage"));
 // DiscountPage is also embedded directly on the homepage (Customerdashboard.tsx) — it
 // must NOT carry its own <PageSeo> there, or it would override the homepage's title on
 // every render. This wrapper adds page-level SEO only for the standalone /discounts route.
@@ -96,23 +109,42 @@ const DiscountsRoutePage = () => (
   </>
 );
 
-const AboutPage = lazy(() => import("./pages/static/AboutPage"));
-const TermsPage = lazy(() => import("./pages/static/TermsPage"));
-const HelpPage = lazy(() => import("./pages/static/HelpPage"));
-const ContactPage = lazy(() => import("./pages/static/ContactPage"));
-
 /* ── Misc ── */
-const Home = lazy(() => import("./home/Home"));
-const NotFound = lazy(() => import("./pages/NotFound"));
+const Home = lazyWithRetry(() => import("./home/Home"));
+const NotFound = lazyWithRetry(() => import("./pages/NotFound"));
 
-/* Shown while a lazy route chunk is downloading — mirrors the loading state
- * every dashboard already renders during its own initial data fetch, so a
- * chunk-load and a data-load look the same to the user. */
+/* Top progress indicator while a lazy route chunk is resolving — renders the Atom Loader */
 const RouteFallback = () => (
-  <div className="flex h-screen w-screen items-center justify-center bg-white">
-    <PulseLoader color="#000000" />
+  <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-white/80 backdrop-blur-xs">
+    <Loader fullScreen={false} />
   </div>
 );
+
+// Auto-redirect /profile back to storefront with the Profile Drawer opened
+const ProfileRedirect = () => {
+  const navigate = useNavigate();
+  useEffect(() => {
+    navigate("/", { replace: true });
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent("open-profile-drawer"));
+    }, 150);
+  }, [navigate]);
+  return null;
+};
+
+// Auto-redirect /cart back to storefront with the Cart Drawer opened
+const CartRedirect = () => {
+  const navigate = useNavigate();
+  const { openCartDrawer } = useCart();
+  useEffect(() => {
+    navigate("/", { replace: true });
+    setTimeout(() => {
+      openCartDrawer();
+      window.dispatchEvent(new CustomEvent("open-cart-drawer"));
+    }, 150);
+  }, [navigate, openCartDrawer]);
+  return null;
+};
 
 /* ======================================================= */
 /* ==================== CUSTOMER LAYOUT ================== */
@@ -135,28 +167,35 @@ const CustomerLayout = () => {
     };
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTo({
-        top: 0,
-        left: 0,
-        behavior: "instant",
-      });
+      scrollContainerRef.current.scrollTop = 0;
+      scrollContainerRef.current.scrollLeft = 0;
+    }
+    if (typeof window !== "undefined") {
+      window.scrollTo(0, 0);
     }
   }, [pathname]);
 
   // Privileged roles must never see the customer-facing layout.
-  // Handles the browser back-button case where an admin lands on "/".
+  // Handles the browser back-button case or slow internet load where an admin lands on "/".
   // Exception: Homepage Manager's live-preview iframe deliberately embeds this same
   // layout under an admin/super-admin session — isStorefrontPreview() only returns true
   // there (requires both ?preview=1 AND actually being framed), never for a real
   // top-level visit, so this doesn't relax the redirect for anyone else.
-  if (!user.isInitialLoad && user.isAuthenticated && !isStorefrontPreview()) {
-    const role = user.role?.toUpperCase();
-    if (role === "SUPER_ADMIN")
+  const effectiveRole = (user.role || (typeof window !== "undefined" ? localStorage.getItem("userRole") : null))?.toUpperCase();
+  const isPrivileged = effectiveRole === "SUPER_ADMIN" || effectiveRole === "ADMIN" || effectiveRole === "STAFF";
+
+  if (isPrivileged && !isStorefrontPreview()) {
+    if (effectiveRole === "SUPER_ADMIN")
       return <Navigate to="/super-admin-dashboard" replace />;
-    if (role === "ADMIN") return <Navigate to="/admin-dashboard" replace />;
-    if (role === "STAFF") return <Navigate to="/staff-dashboard" replace />;
+    if (effectiveRole === "ADMIN") return <Navigate to="/admin-dashboard" replace />;
+    if (effectiveRole === "STAFF") return <Navigate to="/staff-dashboard" replace />;
+  }
+
+  // If still in initial load on a slow connection, do not render customer navbar until auth resolves
+  if (user.isInitialLoad) {
+    return null;
   }
 
   return (
@@ -167,10 +206,21 @@ const CustomerLayout = () => {
         cartItemCount={user.isAuthenticated ? cartItems.length : 0}
         handleLogout={logout}
       />
+      <FestiveAmbientOverlay />
 
       {/* Locked inside-scroll wrapper container under the fixed Navbar */}
       <div ref={scrollContainerRef} className="h-screen overflow-y-auto w-full select-text scrollbar-thin">
-        <Outlet />
+        <ErrorBoundary>
+          <Suspense
+            fallback={
+              <div className="min-h-[calc(100vh-var(--app-header-h,80px))] flex items-center justify-center">
+                <Loader fullScreen={false} />
+              </div>
+            }
+          >
+            <Outlet />
+          </Suspense>
+        </ErrorBoundary>
       </div>
     </UserNotificationProvider>
   );
@@ -182,12 +232,15 @@ const CustomerLayout = () => {
  */
 const LoginGuard = ({ children }: { children: React.ReactNode }) => {
   const { user } = useAuth();
-  if (!user.isInitialLoad && user.isAuthenticated) {
-    const role = user.role?.toUpperCase();
-    if (role === "SUPER_ADMIN")
+  const effectiveRole = (user.role || (typeof window !== "undefined" ? localStorage.getItem("userRole") : null))?.toUpperCase();
+  const isPrivileged = effectiveRole === "SUPER_ADMIN" || effectiveRole === "ADMIN" || effectiveRole === "STAFF";
+  const isLoggedIn = user.isAuthenticated || (typeof window !== "undefined" && localStorage.getItem("isLoggedIn") === "true");
+
+  if (isLoggedIn && isPrivileged) {
+    if (effectiveRole === "SUPER_ADMIN")
       return <Navigate to="/super-admin-dashboard" replace />;
-    if (role === "ADMIN") return <Navigate to="/admin-dashboard" replace />;
-    if (role === "STAFF") return <Navigate to="/staff-dashboard" replace />;
+    if (effectiveRole === "ADMIN") return <Navigate to="/admin-dashboard" replace />;
+    if (effectiveRole === "STAFF") return <Navigate to="/staff-dashboard" replace />;
   }
   return <>{children}</>;
 };
@@ -198,15 +251,15 @@ const LoginGuard = ({ children }: { children: React.ReactNode }) => {
 
 const AppRoutes = () => {
   return (
-    <Suspense fallback={<RouteFallback />}>
-    <Routes>
-      {/* ===================== ADMIN ROUTES (ADMIN role only) ===================== */}
+    <ErrorBoundary>
+      <Suspense fallback={<RouteFallback />}>
+        <Routes>
+      {/* ===================== ADMIN ROUTES (ADMIN & SUPER_ADMIN) ===================== */}
       <Route
         path="/admin-dashboard"
         element={
           <ProtectedRoute
-            requiredRoles={["ADMIN"]}
-            redirectTo="/super-admin-dashboard"
+            requiredRoles={["ADMIN", "SUPER_ADMIN"]}
           >
             <NotificationProvider>
               <StaffPermissionProvider>
@@ -223,6 +276,7 @@ const AppRoutes = () => {
         {/* Unified Catalog Management (Category + Product merge) */}
         <Route path="manage-catalog" element={<Listcategory />} />
         <Route path="manage-catalog/attributes/:categoryId" element={<CategoryAttributes />} />
+        <Route path="products" element={<AdminProductStockManagement />} />
         {/* Legacy paths — kept working as redirects for existing bookmarks */}
         <Route path="manage-categories/add-category" element={<LegacyCatalogRedirect toSuffix="manage-catalog" />} />
         <Route path="manage-categories/list-category" element={<LegacyCatalogRedirect toSuffix="manage-catalog" />} />
@@ -256,7 +310,6 @@ const AppRoutes = () => {
         element={
           <ProtectedRoute
             requiredRoles={["SUPER_ADMIN"]}
-            redirectTo="/admin-dashboard"
           >
             <NotificationProvider>
               <StaffPermissionProvider>
@@ -272,6 +325,7 @@ const AppRoutes = () => {
         {/* Unified Catalog Management (Category + Product merge) */}
         <Route path="manage-catalog" element={<Listcategory />} />
         <Route path="manage-catalog/attributes/:categoryId" element={<CategoryAttributes />} />
+        <Route path="products" element={<AdminProductStockManagement />} />
         {/* Legacy paths — kept working as redirects for existing bookmarks */}
         <Route path="manage-categories/add-category" element={<LegacyCatalogRedirect toSuffix="manage-catalog" />} />
         <Route path="manage-categories/list-category" element={<LegacyCatalogRedirect toSuffix="manage-catalog" />} />
@@ -339,6 +393,16 @@ const AppRoutes = () => {
             </RequireStaffPermission>
           }
         />
+        <Route
+          path="products"
+          element={
+            <RequireStaffPermission
+              anyOf={["PRODUCT_VIEW", "PRODUCT_ADD", "PRODUCT_EDIT", "PRODUCT_DELETE"]}
+            >
+              <AdminProductStockManagement />
+            </RequireStaffPermission>
+          }
+        />
         {/* Legacy paths — kept working as redirects for existing bookmarks */}
         <Route path="manage-categories/add-category" element={<LegacyCatalogRedirect toSuffix="manage-catalog" />} />
         <Route path="manage-categories/list-category" element={<LegacyCatalogRedirect toSuffix="manage-catalog" />} />
@@ -352,6 +416,14 @@ const AppRoutes = () => {
           element={
             <RequireStaffPermission anyOf={["ORDER_VIEW", "ORDER_UPDATE"]}>
               <AdminOrderManagement />
+            </RequireStaffPermission>
+          }
+        />
+        <Route
+          path="place-order"
+          element={
+            <RequireStaffPermission anyOf={["ORDER_CREATE"]}>
+              <AdminOrderPage />
             </RequireStaffPermission>
           }
         />
@@ -428,21 +500,17 @@ const AppRoutes = () => {
         <Route path="/" element={<Customerdashboard />} />
         <Route path="/discounts" element={<DiscountsRoutePage />} />
         <Route path="/products" element={<ProductsPage />} />
+        <Route path="/categories" element={<AllCategoriesPage />} />
         <Route path="/categories/:slug" element={<CategoryProductPage />} />
         <Route path="/products/:productId" element={<ProductDetailPage />} />
         <Route path="/about" element={<AboutPage />} />
         <Route path="/terms" element={<TermsPage />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/help" element={<HelpPage />} />
         <Route path="/contact" element={<ContactPage />} />
 
-        <Route
-          path="/cart"
-          element={
-            <ProtectedRoute unauthenticatedRedirectTo="/">
-              <Cartpage />
-            </ProtectedRoute>
-          }
-        />
+        {/* /cart opens the side bar Cart Drawer on the storefront */}
+        <Route path="/cart" element={<CartRedirect />} />
 
         <Route
           path="/checkout"
@@ -484,7 +552,7 @@ const AppRoutes = () => {
           path="/profile"
           element={
             <ProtectedRoute unauthenticatedRedirectTo="/">
-              <ProfilePage />
+              <ProfileRedirect />
             </ProtectedRoute>
           }
         />
@@ -525,6 +593,7 @@ const AppRoutes = () => {
       <Route path="*" element={<NotFound />} />
     </Routes>
     </Suspense>
+    </ErrorBoundary>
   );
 };
 

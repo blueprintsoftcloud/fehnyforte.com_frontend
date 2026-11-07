@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
@@ -9,18 +9,21 @@ import {
   TruckIcon,
   XMarkIcon,
   ChevronLeftIcon,
+  ChevronDownIcon,
   CheckCircleIcon,
   ArrowRightIcon,
   ShieldCheckIcon,
   SparklesIcon,
 } from "@heroicons/react/24/outline";
 import { BeatLoader } from "react-spinners";
+import { fetchPincodeDetails } from "../utils/pincodeLookup";
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import toast from "react-hot-toast";
 import api from "../utils/api";
 import { useCart } from "../context/CartContext";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 
 const customIcon = new L.Icon({
   iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
@@ -103,6 +106,7 @@ type LocMode = "gps" | "saved" | "manual";
 export default function DeliveryLocationModal({ isOpen, onClose, product }: DeliveryLocationModalProps) {
   const navigate = useNavigate();
   const { cartItems, addToCart, cartTotal } = useCart();
+  useBodyScrollLock(isOpen);
 
   // Cart-checkout mode (no `product`): preview against every cart line instead of one
   // item. Buy Now mode: just the one product, same as before this generalized.
@@ -114,10 +118,17 @@ export default function DeliveryLocationModal({ isOpen, onClose, product }: Deli
   const [phase, setPhase] = useState<Phase>("select");
   const [locMode, setLocMode] = useState<LocMode | null>(null);
   const [savedAddress, setSavedAddress] = useState<SavedAddress | null>(null);
+  const [addressLoading, setAddressLoading] = useState(false);
   const [position, setPosition] = useState<[number, number] | null>(null);
   const [gpsCoords, setGpsCoords] = useState<[number, number] | null>(null);
   const [preview, setPreview] = useState<ShippingPreview | null>(null);
-  const [manualForm, setManualForm] = useState({ fullAddress: "", city: "", state: "", zipCode: "" });
+  const [manualForm, setManualForm] = useState({ fullAddress: "", city: "", state: "", zipCode: "", locality: "" });
+  const [availableLocalities, setAvailableLocalities] = useState<string[]>([]);
+  const [isLocalityDropdownOpen, setIsLocalityDropdownOpen] = useState(false);
+  const [pincodeLoading, setPincodeLoading] = useState(false);
+  const [pincodeError, setPincodeError] = useState<string | null>(null);
+  const [addressError, setAddressError] = useState<string | null>(null);
+  const addressInputRef = useRef<HTMLTextAreaElement | null>(null);
   const [gpsLoading, setGpsLoading] = useState(false);
   const [calcLoading, setCalcLoading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -135,12 +146,20 @@ export default function DeliveryLocationModal({ isOpen, onClose, product }: Deli
       setCalcLoading(false);
       setIsProcessing(false);
       setRepositioning(false);
-      setManualForm({ fullAddress: "", city: "", state: "", zipCode: "" });
+      setAddressLoading(false);
+      setManualForm({ fullAddress: "", city: "", state: "", zipCode: "", locality: "" });
+      setAvailableLocalities([]);
+      setIsLocalityDropdownOpen(false);
+      setPincodeLoading(false);
+      setPincodeError(null);
+      setAddressError(null);
       return;
     }
+    setAddressLoading(true);
     api.get("/address/default")
       .then((res) => setSavedAddress(res.data.address))
-      .catch(() => setSavedAddress(null));
+      .catch(() => setSavedAddress(null))
+      .finally(() => setAddressLoading(false));
   }, [isOpen]);
 
 const isWithinIndiaBoundingBox = (lat: number, lng: number): boolean => {
@@ -258,31 +277,76 @@ const isWithinIndiaBoundingBox = (lat: number, lng: number): boolean => {
     const val = e.target.value;
     const cleanPincode = val.replace(/\D/g, "").slice(0, 6);
     setManualForm((prev) => ({ ...prev, zipCode: cleanPincode }));
+    setPincodeError(null);
+
+    if (cleanPincode.length < 6) {
+      setAvailableLocalities([]);
+      setManualForm((prev) => ({ ...prev, locality: "" }));
+      return;
+    }
 
     if (cleanPincode.length === 6) {
+      setPincodeLoading(true);
       try {
-        const res = await fetch(`https://api.postalpincode.in/pincode/${cleanPincode}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data && data[0] && data[0].Status === "Success") {
-            const postOffice = data[0].PostOffice[0];
-            const fetchedState = postOffice.State;
-            const fetchedCity = postOffice.District || postOffice.Block || postOffice.Name;
-            setManualForm((prev) => ({
-              ...prev,
-              state: fetchedState || prev.state,
-              city: fetchedCity || prev.city,
-            }));
-            toast.success(`Pincode resolved to ${fetchedCity}, ${fetchedState}`);
+        const result = await fetchPincodeDetails(cleanPincode);
+        if (result.success) {
+          const autoLocality = result.localities.length === 1 ? result.localities[0] : "";
+          setManualForm((prev) => ({
+            ...prev,
+            state: result.state || prev.state,
+            city: result.city || prev.city,
+            locality: autoLocality,
+          }));
+          setAvailableLocalities(result.localities);
+          setPincodeError(null);
+
+          if (result.localities.length === 1) {
+            setIsLocalityDropdownOpen(false);
+            toast.success(`Resolved: ${result.localities[0]}, ${result.city}, ${result.state}`);
+          } else {
+            setIsLocalityDropdownOpen(true);
+            toast.success(`Resolved: ${result.city}, ${result.state}. Select your post office.`);
           }
+        } else {
+          setAvailableLocalities([]);
+          setIsLocalityDropdownOpen(false);
+          setPincodeError(result.error || "Pincode not found");
+          toast.error(result.error || "Pincode not found. Please enter details manually.");
         }
       } catch (err) {
         console.error("Failed to fetch state/city from pincode", err);
+        setPincodeError("Unable to verify pincode. Please enter your address details manually.");
+      } finally {
+        setPincodeLoading(false);
       }
     }
   };
 
   const handleManualCalculate = async () => {
+    const zip = manualForm.zipCode.trim();
+    if (!zip || zip.length < 6) {
+      toast.error("Please enter a valid 6-digit Pincode", { id: "manual-zip" });
+      return;
+    }
+    if (availableLocalities.length > 1 && !manualForm.locality.trim()) {
+      setIsLocalityDropdownOpen(true);
+      toast.error("Please select your Post Office / Locality", { id: "manual-locality" });
+      return;
+    }
+    const fullAddr = manualForm.fullAddress.trim();
+    if (!fullAddr) {
+      setAddressError("Please enter your House / Flat No., Street Name, or Area");
+      addressInputRef.current?.focus();
+      toast.error("Please enter your Full Address before calculating rates", { id: "manual-address" });
+      return;
+    }
+    if (fullAddr.length < 5) {
+      setAddressError("Please enter a complete address (minimum 5 characters)");
+      addressInputRef.current?.focus();
+      toast.error("Please enter a complete delivery address", { id: "manual-address" });
+      return;
+    }
+    setAddressError(null);
     const state = manualForm.state.trim();
     if (!state) {
       toast.error("Please enter your state", { id: "manual-state" });
@@ -341,11 +405,18 @@ const isWithinIndiaBoundingBox = (lat: number, lng: number): boolean => {
         await api.post("/address/save-geo", { latitude: gpsCoords[0], longitude: gpsCoords[1] });
       } else if (locMode === "manual") {
         const addr = manualForm;
+        const finalFull = addr.fullAddress
+          ? (addr.locality && !addr.fullAddress.toLowerCase().includes(addr.locality.toLowerCase())
+              ? `${addr.fullAddress}, ${addr.locality}`
+              : addr.fullAddress)
+          : (addr.locality ? `${addr.locality}, ${addr.city}` : `${addr.city}, ${addr.state}`);
+
         await api.post("/address/save-manual", {
-          fullAddress: addr.fullAddress || `${addr.city}, ${addr.state}`,
+          fullAddress: finalFull,
           city: addr.city || addr.state,
           state: addr.state,
           zipCode: addr.zipCode || "000000",
+          locality: addr.locality || undefined,
         });
       }
 
@@ -354,7 +425,8 @@ const isWithinIndiaBoundingBox = (lat: number, lng: number): boolean => {
           ? ""
           : locMode === "saved"
             ? (savedAddress?.fullAddress || `${savedAddress?.city}, ${savedAddress?.state}`)
-            : (manualForm.fullAddress || `${manualForm.city}, ${manualForm.state}`),
+            : (manualForm.fullAddress || (manualForm.locality ? `${manualForm.locality}, ${manualForm.city}` : `${manualForm.city}, ${manualForm.state}`)),
+        locality: locMode === "manual" ? manualForm.locality : ((savedAddress as any)?.locality || ""),
         detectedArea: locMode === "gps" ? (preview.address || "") : "",
         city: locMode === "saved"
           ? (savedAddress?.city || "")
@@ -407,31 +479,32 @@ const isWithinIndiaBoundingBox = (lat: number, lng: number): boolean => {
   return createPortal(
     <AnimatePresence>
       {isOpen && (
-        <>
+        <motion.div
+          key="delivery-location-portal"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
+          className="fixed inset-0 z-[150] flex items-center justify-center p-3 sm:p-4 overflow-y-auto"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) onClose();
+          }}
+        >
           {/* Backdrop */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[150] bg-slate-900/60 backdrop-blur-sm cursor-pointer"
+          <div
+            className="fixed inset-0 bg-slate-900/60 cursor-pointer"
             onClick={onClose}
           />
 
-          {/* Centering wrapper */}
-          <div
-            className="fixed inset-0 z-[160] flex items-center justify-center p-3 sm:p-4 overflow-y-auto"
-            onClick={(e) => {
-              if (e.target === e.currentTarget) onClose();
-            }}
+          {/* Modal Card */}
+          <motion.div
+            key="delivery-location-card"
+            initial={{ opacity: 0, scale: 0.96, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.96, y: 10 }}
+            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+            className="relative z-10 w-full max-w-lg bg-white shadow-2xl rounded-3xl flex flex-col max-h-[85vh] cursor-default border border-slate-100 overflow-hidden"
           >
-            {/* Modal Card */}
-            <motion.div
-              initial={{ opacity: 0, scale: 0.96, y: 12 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.96, y: 12 }}
-              transition={{ type: "spring", damping: 28, stiffness: 320 }}
-              className="w-full max-w-lg bg-white shadow-2xl rounded-3xl flex flex-col max-h-[85vh] cursor-default border border-slate-100 overflow-hidden"
-            >
               {/* Header */}
               <div className="px-6 py-4 border-b border-slate-100 bg-white sticky top-0 z-10">
                 <div className="flex items-center justify-between">
@@ -478,16 +551,14 @@ const isWithinIndiaBoundingBox = (lat: number, lng: number): boolean => {
                     </div>
 
                     {/* GPS Button */}
-                    <motion.button
-                      whileHover={{ scale: 1.005 }}
-                      whileTap={{ scale: 0.995 }}
+                    <button
                       type="button"
                       onClick={handleSelectGPS}
                       disabled={gpsLoading || calcLoading}
-                      className={`w-full flex items-center gap-4 rounded-2xl border p-4 text-left transition-all bg-white shadow-xs ${
+                      className={`w-full flex items-center gap-4 rounded-2xl border p-4 text-left transition-all bg-white shadow-xs cursor-pointer active:scale-[0.99] ${
                         locMode === "gps"
                           ? "border-indigo-600 ring-2 ring-indigo-600/10"
-                          : "border-slate-200 hover:border-indigo-200 hover:shadow-md"
+                          : "border-slate-200 hover:border-indigo-300 hover:shadow-md hover:bg-indigo-50/20"
                       }`}
                     >
                       <div className="w-11 h-11 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center shrink-0">
@@ -504,20 +575,26 @@ const isWithinIndiaBoundingBox = (lat: number, lng: number): boolean => {
                         </div>
                         <p className="text-xs text-slate-500 mt-0.5 truncate">Fastest • Detects location via device sensors</p>
                       </div>
-                    </motion.button>
+                    </button>
 
                     {/* Saved Address Button */}
-                    {savedAddress ? (
-                      <motion.button
-                        whileHover={{ scale: 1.005 }}
-                        whileTap={{ scale: 0.995 }}
+                    {addressLoading ? (
+                      <div className="w-full flex items-center gap-4 rounded-2xl border border-slate-200/80 bg-slate-50/60 p-4 animate-pulse">
+                        <div className="w-11 h-11 rounded-xl bg-slate-200 shrink-0" />
+                        <div className="flex-1 space-y-2">
+                          <div className="h-4 w-32 bg-slate-200 rounded" />
+                          <div className="h-3 w-48 bg-slate-100 rounded" />
+                        </div>
+                      </div>
+                    ) : savedAddress ? (
+                      <button
                         type="button"
                         onClick={handleSelectSaved}
                         disabled={gpsLoading || calcLoading}
-                        className={`w-full flex items-center gap-4 rounded-2xl border p-4 text-left transition-all bg-white shadow-xs ${
+                        className={`w-full flex items-center gap-4 rounded-2xl border p-4 text-left transition-all bg-white shadow-xs cursor-pointer active:scale-[0.99] ${
                           locMode === "saved"
                             ? "border-emerald-600 ring-2 ring-emerald-600/10"
-                            : "border-slate-200 hover:border-emerald-200 hover:shadow-md"
+                            : "border-slate-200 hover:border-emerald-300 hover:shadow-md hover:bg-emerald-50/20"
                         }`}
                       >
                         <div className="w-11 h-11 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center shrink-0">
@@ -536,7 +613,7 @@ const isWithinIndiaBoundingBox = (lat: number, lng: number): boolean => {
                             {savedAddress.fullAddress || `${savedAddress.city}, ${savedAddress.state}`}
                           </p>
                         </div>
-                      </motion.button>
+                      </button>
                     ) : (
                       <div className="w-full flex items-center gap-4 rounded-2xl border border-dashed border-slate-200 bg-slate-100/50 p-4 opacity-60 cursor-not-allowed">
                         <div className="w-11 h-11 rounded-xl bg-slate-200/60 flex items-center justify-center shrink-0">
@@ -550,16 +627,14 @@ const isWithinIndiaBoundingBox = (lat: number, lng: number): boolean => {
                     )}
 
                     {/* Manual Form Button */}
-                    <motion.button
-                      whileHover={{ scale: 1.005 }}
-                      whileTap={{ scale: 0.995 }}
+                    <button
                       type="button"
                       onClick={() => { setLocMode("manual"); setPhase("manual_form"); }}
                       disabled={gpsLoading || calcLoading}
-                      className={`w-full flex items-center gap-4 rounded-2xl border p-4 text-left transition-all bg-white shadow-xs ${
+                      className={`w-full flex items-center gap-4 rounded-2xl border p-4 text-left transition-all bg-white shadow-xs cursor-pointer active:scale-[0.99] ${
                         locMode === "manual"
                           ? "border-amber-600 ring-2 ring-amber-600/10"
-                          : "border-slate-200 hover:border-amber-200 hover:shadow-md"
+                          : "border-slate-200 hover:border-amber-300 hover:shadow-md hover:bg-amber-50/20"
                       }`}
                     >
                       <div className="w-11 h-11 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center shrink-0">
@@ -569,7 +644,7 @@ const isWithinIndiaBoundingBox = (lat: number, lng: number): boolean => {
                         <p className="font-semibold text-slate-900 text-sm">Enter Pincode & Address</p>
                         <p className="text-xs text-slate-500 mt-0.5">Type in custom destination details</p>
                       </div>
-                    </motion.button>
+                    </button>
                   </div>
                 )}
 
@@ -582,8 +657,9 @@ const isWithinIndiaBoundingBox = (lat: number, lng: number): boolean => {
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                        Pincode <span className="text-red-500">*</span>
+                      <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                        <span>Pincode <span className="text-red-500">*</span></span>
+                        {pincodeLoading && <span className="text-[11px] normal-case font-normal text-indigo-600">Detecting post offices...</span>}
                       </label>
                       <div className="relative">
                         <input
@@ -592,21 +668,126 @@ const isWithinIndiaBoundingBox = (lat: number, lng: number): boolean => {
                           onChange={handlePincodeChange}
                           placeholder="6-digit pincode"
                           maxLength={6}
-                          className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/10 focus:outline-none transition shadow-xs font-mono"
+                          className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/10 focus:outline-none transition shadow-xs font-mono pr-10"
                         />
-                        {/* <SparklesIcon className="h-4 w-4 text-slate-300 absolute right-3.5 top-3.5" /> */}
+                        {pincodeLoading && (
+                          <div className="absolute right-3.5 top-1/2 -translate-y-1/2">
+                            <BeatLoader size={5} color="#4f46e5" />
+                          </div>
+                        )}
                       </div>
+                      {pincodeError && (
+                        <p className="text-[11px] font-medium text-amber-800 bg-amber-50 border border-amber-200/80 rounded-xl px-3 py-2 mt-2 flex items-center gap-1.5">
+                          <span>⚠️</span>
+                          <span>{pincodeError} — You can fill city and state manually below.</span>
+                        </p>
+                      )}
                     </div>
 
+                    {/* Multiple Post Offices / Localities Custom Dropdown */}
+                    {availableLocalities.length > 1 && (
+                      <div className="relative">
+                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                          <span>Locality / Post Office <span className="text-rose-500">*</span></span>
+                          <span className="text-[10px] font-normal normal-case text-indigo-600">Select exact area</span>
+                        </label>
+
+                        <button
+                          type="button"
+                          onClick={() => setIsLocalityDropdownOpen((prev) => !prev)}
+                          className={`w-full rounded-2xl border px-4 py-3 text-sm flex items-center justify-between transition-all shadow-xs cursor-pointer text-left ${
+                            isLocalityDropdownOpen
+                              ? "border-indigo-600 ring-2 ring-indigo-600/15 bg-white"
+                              : "border-slate-200 bg-white hover:border-indigo-600"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <MapPinIcon className="h-4 w-4 text-indigo-600 shrink-0" />
+                            <span className={`truncate font-medium ${manualForm.locality ? "text-slate-900" : "text-slate-400"}`}>
+                              {manualForm.locality || "-- Choose your Post Office / Area --"}
+                            </span>
+                          </div>
+                          <ChevronDownIcon
+                            className={`h-4 w-4 text-slate-400 shrink-0 transition-transform duration-200 ${
+                              isLocalityDropdownOpen ? "rotate-180 text-indigo-600" : ""
+                            }`}
+                          />
+                        </button>
+
+                        {isLocalityDropdownOpen && (
+                          <>
+                            <div
+                              className="fixed inset-0 z-20"
+                              onClick={() => setIsLocalityDropdownOpen(false)}
+                            />
+                            <div className="absolute left-0 right-0 mt-1.5 z-30 max-h-56 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xl">
+                              {availableLocalities.map((loc) => {
+                                const isSelected = manualForm.locality === loc;
+                                return (
+                                  <button
+                                    key={loc}
+                                    type="button"
+                                    onClick={() => {
+                                      setManualForm((f) => ({ ...f, locality: loc }));
+                                      setIsLocalityDropdownOpen(false);
+                                    }}
+                                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm transition-all cursor-pointer text-left ${
+                                      isSelected
+                                        ? "bg-indigo-50 text-indigo-700 font-bold"
+                                        : "text-slate-800 hover:bg-slate-50 hover:text-indigo-600"
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2.5 truncate">
+                                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isSelected ? "bg-indigo-600" : "bg-slate-300"}`} />
+                                      <span className="truncate">{loc}</span>
+                                    </div>
+                                    {isSelected && (
+                                      <CheckCircleIcon className="h-4 w-4 text-indigo-600 shrink-0" />
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Single Post Office Auto-selected badge */}
+                    {availableLocalities.length === 1 && manualForm.locality && (
+                      <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 rounded-xl px-3.5 py-2 text-xs font-semibold text-indigo-700">
+                        <CheckCircleIcon className="w-4 h-4 shrink-0 text-indigo-600" />
+                        <span>Post Office: <strong>{manualForm.locality}</strong></span>
+                      </div>
+                    )}
+
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Full Address</label>
+                      <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                        <span>Full Address <span className="text-rose-500">*</span></span>
+                        {!manualForm.fullAddress.trim() && manualForm.zipCode.length === 6 && (
+                          <span className="text-[10px] normal-case text-amber-600 font-medium">Required for delivery</span>
+                        )}
+                      </label>
                       <textarea
+                        ref={addressInputRef}
                         value={manualForm.fullAddress}
-                        onChange={(e) => setManualForm((f) => ({ ...f, fullAddress: e.target.value }))}
+                        onChange={(e) => {
+                          setManualForm((f) => ({ ...f, fullAddress: e.target.value }));
+                          if (addressError) setAddressError(null);
+                        }}
                         placeholder="Flat / House No., Street Name, Area..."
                         rows={2}
-                        className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/10 focus:outline-none transition resize-none shadow-xs"
+                        className={`w-full rounded-2xl border px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none transition resize-none shadow-xs ${
+                          addressError
+                            ? "border-rose-400 ring-2 ring-rose-100 bg-rose-50/20"
+                            : "border-slate-200 bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/10"
+                        }`}
                       />
+                      {addressError && (
+                        <p className="text-[11px] font-medium text-rose-600 mt-1 flex items-center gap-1">
+                          <span>•</span> {addressError}
+                        </p>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
@@ -633,12 +814,11 @@ const isWithinIndiaBoundingBox = (lat: number, lng: number): boolean => {
                       </div>
                     </div>
 
-                    <motion.button
-                      whileHover={{ scale: 1.01 }}
-                      whileTap={{ scale: 0.99 }}
+                    <button
+                      type="button"
                       onClick={handleManualCalculate}
                       disabled={calcLoading || !manualForm.state.trim()}
-                      className="w-full rounded-2xl bg-slate-900 py-3.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50 transition-all flex items-center justify-center gap-2 mt-3 shadow-md"
+                      className="w-full rounded-2xl bg-slate-900 py-3.5 text-sm font-semibold text-white hover:bg-slate-800 active:scale-[0.99] disabled:opacity-50 transition-all flex items-center justify-center gap-2 mt-3 shadow-md cursor-pointer"
                     >
                       {calcLoading ? (
                         <BeatLoader size={6} color="#fff" />
@@ -649,7 +829,7 @@ const isWithinIndiaBoundingBox = (lat: number, lng: number): boolean => {
                           <ArrowRightIcon className="h-3.5 w-3.5 stroke-[2.5]" />
                         </>
                       )}
-                    </motion.button>
+                    </button>
                   </div>
                 )}
 
@@ -770,12 +950,11 @@ const isWithinIndiaBoundingBox = (lat: number, lng: number): boolean => {
                     </div>
 
                     {/* Proceed Action Button */}
-                    <motion.button
-                      whileHover={{ scale: 1.01 }}
-                      whileTap={{ scale: 0.99 }}
+                    <button
+                      type="button"
                       onClick={handleProceed}
                       disabled={isProcessing}
-                      className="w-full rounded-2xl bg-indigo-600 py-3.5 text-xs font-bold uppercase tracking-wider text-white hover:bg-indigo-700 disabled:opacity-60 transition-all shadow-md shadow-indigo-600/20 flex items-center justify-center gap-2"
+                      className="w-full rounded-2xl bg-indigo-600 py-3.5 text-xs font-bold uppercase tracking-wider text-white hover:bg-indigo-700 active:scale-[0.99] disabled:opacity-60 transition-all shadow-md shadow-indigo-600/20 flex items-center justify-center gap-2 cursor-pointer"
                     >
                       {isProcessing ? (
                         <BeatLoader size={6} color="#fff" />
@@ -785,13 +964,12 @@ const isWithinIndiaBoundingBox = (lat: number, lng: number): boolean => {
                           <span>Proceed to Checkout</span>
                         </>
                       )}
-                    </motion.button>
+                    </button>
                   </div>
                 )}
               </div>
             </motion.div>
-          </div>
-        </>
+          </motion.div>
       )}
     </AnimatePresence>,
     document.body
